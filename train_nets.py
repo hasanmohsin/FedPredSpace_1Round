@@ -20,6 +20,9 @@ use_cuda = torch.cuda.is_available()
 
 device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
 
+print("CUDA available?: ", torch.cuda.is_available())
+print("Device used: ", device)
+
 # data augmentation
 transform_train = transforms.Compose([
     transforms.ToTensor(),

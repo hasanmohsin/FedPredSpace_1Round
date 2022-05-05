@@ -34,15 +34,15 @@ def get_mnist(use_cuda, batch_size):
 
 
     if use_cuda:
-        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=True,
-                                                num_workers=3)
-        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=True,
-                                                num_workers=3)
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=True
+                                                , num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=True
+                                                ,num_workers=3)
 
     else:
-        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=False,
-                                                num_workers=3)
-        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=False,
-                                             num_workers=3)
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=False
+                                                ,num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=False
+                                             ,num_workers=3)
 
     return trainloader, valloader
