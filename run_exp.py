@@ -21,6 +21,8 @@ def main(args):
     num_epochs = 2
     ####################
 
+    utils.set_seed(args.seed)
+
     use_cuda = torch.cuda.is_available()
 
     device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
