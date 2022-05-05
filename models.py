@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+#for the neural networks trained 
+
 class LinearNet(nn.Module):
     def __init__(self, inp_dim, num_hidden, out_dim):
         super().__init__()
