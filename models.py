@@ -10,6 +10,7 @@ class LinearNet(nn.Module):
 
         self.input_dim = inp_dim
         self.num_hidden = num_hidden
+        self.out_dim = out_dim
 
         self.fc1 = nn.Linear(inp_dim, num_hidden)
         self.fc2 = nn.Linear(num_hidden, num_hidden)

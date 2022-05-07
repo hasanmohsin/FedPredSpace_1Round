@@ -19,6 +19,7 @@ def main(args):
     lr = 1e-3
     batch_size = 100
     num_epochs = 2
+    mode = "cSGHMC"
     ####################
 
     utils.set_seed(args.seed)
@@ -32,11 +33,20 @@ def main(args):
 
     trainloader, valloader  = datasets.get_mnist(use_cuda, batch_size)
 
-    net = models.LinearNet(inp_dim=28*28, num_hidden = 100, out_dim=10)
-    
-    net = train_nets.sgd_train(net, lr, num_epochs, trainloader)
-    
-    acc = utils.classify_acc(net, valloader)
+    if mode == "SGD":
+        net = models.LinearNet(inp_dim=28*28, num_hidden = 100, out_dim=10)
+        
+        net = train_nets.sgd_train(net, lr, num_epochs, trainloader)
+        
+        acc = utils.classify_acc(net, valloader)
+    elif mode == "cSGHMC":
+        print("cSGHMC inference")
+
+        net = models.LinearNet(inp_dim = 28*28, num_hidden  =100, out_dim = 10)
+        
+        trainer = train_nets.cSGHMC(base_net=net, trainloader=trainloader, device=device)
+        trainer.train()
+        acc = trainer.test_acc(valloader)
 
     return 
 
