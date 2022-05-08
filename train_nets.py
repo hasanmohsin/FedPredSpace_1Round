@@ -4,8 +4,8 @@ import copy
 
 # training with regular SGD
 def sgd_train(net, lr, num_epochs, trainloader):
-    optimizer = torch.optim.SGD(net.parameters(), lr = lr)
-
+    #optimizer = torch.optim.SGD(net.parameters(), lr = lr, momentum=0.9)
+    optimizer = torch.optim.Adam(net.parameters(), lr =lr)
     net = net.train()
 
     criterion = torch.nn.CrossEntropyLoss()

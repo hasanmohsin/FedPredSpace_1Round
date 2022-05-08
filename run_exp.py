@@ -18,8 +18,9 @@ def main(args):
     ####################     
     lr = 1e-3
     batch_size = 100
-    num_epochs = 2
-    mode = "cSGHMC"
+    num_epochs = 24
+    mode = "SGD"
+    #mode = "cSGHMC"
     ####################
 
     utils.set_seed(args.seed)
