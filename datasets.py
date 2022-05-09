@@ -2,6 +2,8 @@ from pkgutil import get_data
 import torch
 from torchvision import datasets, transforms
 import numpy as np
+import pandas as pd
+import tensorflow as tf
 
 #do an iid split of the dataset into num_clients parts
 # each client gets equal sized dataset
@@ -28,6 +30,39 @@ def iid_split(data, num_clients, batch_size):
 
     #array of datasets
     return c_dataloaders, lens
+
+
+## Bike Sharing dataset
+# 511 training points
+# 220 validation points
+def get_bike(normalize = True, batch_size = 1):
+    col1=['instant','dteday','season','yr','mnth','holiday','weekday',
+     'workingday','weathersit','temp','atemp','hum','windspeed','casual','registered', 'cnt']
+    df1 = pd.read_csv('day.csv',header=None,skiprows=1, na_filter=True,names=col1)
+    df1.dropna()
+    df1 = df1.drop(columns=['dteday'])
+    df1 = df1.drop(columns=['instant'])
+    col1=df1.columns.tolist()
+    if normalize:
+        df1 =(df1-df1.min())/(df1.max()-df1.min())
+    data=df1[col1]
+    target = data.pop('cnt')
+    ds = tf.data.Dataset.from_tensor_slices((data.values, target.values))
+    train_size = int(len(ds) * 0.7)
+    dataset = (
+        ds
+        .map(lambda x, y: (x, tf.cast(y, tf.float32)))
+        .prefetch(buffer_size=len(ds))
+        .cache()
+    )
+    # We shuffle with a buffer the same size as the dataset.
+    train_dataset = (
+        dataset.take(train_size).shuffle(buffer_size=train_size).batch(batch_size)
+    )
+    test_dataset = dataset.skip(train_size).batch(batch_size)
+
+    return train_dataset, test_dataset
+
 
 ## MNIST dataset
 # 60,000 train points, 
