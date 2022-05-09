@@ -38,7 +38,7 @@ def iid_split(data, num_clients, batch_size):
 def get_bike(normalize = True, batch_size = 1):
     col1=['instant','dteday','season','yr','mnth','holiday','weekday',
      'workingday','weathersit','temp','atemp','hum','windspeed','casual','registered', 'cnt']
-    df1 = pd.read_csv('bike.csv',header=None,skiprows=1, na_filter=True,names=col1)
+    df1 = pd.read_csv('Dataset/bike.csv',header=None,skiprows=1, na_filter=True,names=col1)
     df1.dropna()
     df1 = df1.drop(columns=['dteday'])
     df1 = df1.drop(columns=['instant'])
