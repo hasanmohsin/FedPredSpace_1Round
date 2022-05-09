@@ -202,11 +202,69 @@ class EP_MCMC:
             self.global_update_step()
             acc = self.global_train.test_acc(valloader)
             print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+
+            for c in range(self.num_clients):
+                acc_c = self.client_train[c].test_acc(valloader)
+                print("Client {}, test accuracy: {}".format(c, acc_c))
         return
 
 #ours
 # same as EP_MCMC, but inference step is different
-#class F_MCMC(FedAvg):
+class F_MCMC(EP_MCMC):
+    def __init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, epoch_per_client,
+                batch_size, device):
+        EP_MCMC.__init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, epoch_per_client,
+                batch_size, device)
+
+    #do nothing in aggregate function
+    def aggregate(self):
+        return
+    
+    #prediction on input x
+    def predict(self, x):
+        global_pred = 1.0
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+                
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred = torch.mean(pred_list, dim=0, keepdims=False)
+            
+            #assuming a uniform posterior
+            global_pred *= pred
+        return global_pred/torch.sum(global_pred)
+
+    def test_acc(self, testloader):
+        total = 0
+        correct = 0
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            pred = self.predict(x)
+
+            _, pred_class = torch.max(pred, 1)    
+
+            total += y.size(0)
+            correct += (pred_class == y).sum().item()
+
+        acc = 100*correct/total
+        print("Accuracy on test set: ", acc)
+        return acc
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            self.global_update_step()
+            acc = self.test_acc(valloader)
+            print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+
+            for c in range(self.num_clients):
+                acc_c = self.client_train[c].test_acc(valloader)
+                print("Client {}, test accuracy: {}".format(c, acc_c))
+        return
+
 
 #class FedPA(FedAvg):
 

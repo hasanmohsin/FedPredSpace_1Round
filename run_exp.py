@@ -20,7 +20,9 @@ def main(args):
     lr = 1e-3
     batch_size = 100
     num_epochs = 24
-    mode = "EP_MCMC"
+    
+    #mode = "fed_SGD"
+    mode = "F_MCMC"
     #mode = "cSGHMC"
     ####################
 
@@ -63,6 +65,17 @@ def main(args):
                                     epoch_per_client = 24,
                                     batch_size = batch_size, device=device)
         ep_mcmc.train(valloader=valloader)
+    
+    elif mode == "F_MCMC":
+        base_net = models.LinearNet(inp_dim = 28*28, num_hidden = 100, out_dim = 10)
+
+        f_mcmc = fed_algos.F_MCMC(num_clients = 5,
+                                    base_net = base_net,
+                                    traindata=train_data,
+                                    num_rounds = 1,
+                                    epoch_per_client = 24,
+                                    batch_size = batch_size, device=device)
+        f_mcmc.train(valloader=valloader)
 
     elif mode == "cSGHMC":
         print("cSGHMC inference")
