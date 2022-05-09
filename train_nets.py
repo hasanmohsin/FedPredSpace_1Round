@@ -2,6 +2,23 @@ import torch
 import numpy as np
 import copy
 
+def sgd_train_step(net, optimizer, criterion, trainloader):
+    epoch_loss = 0.0
+    count = 0
+    for x, y in trainloader:
+        
+        optimizer.zero_grad()
+        pred_logits = net(x)
+        loss = criterion(pred_logits, y)
+        loss.backward()
+        optimizer.step()
+
+        epoch_loss += loss.item()
+
+        count+=1
+    return net, epoch_loss
+   
+
 # training with regular SGD
 def sgd_train(net, lr, num_epochs, trainloader):
     #optimizer = torch.optim.SGD(net.parameters(), lr = lr, momentum=0.9)
@@ -11,23 +28,9 @@ def sgd_train(net, lr, num_epochs, trainloader):
     criterion = torch.nn.CrossEntropyLoss()
 
     for i in range(num_epochs):
-        epoch_loss = 0.0
-        count = 0
-        for x, y in trainloader:
-            
-            optimizer.zero_grad()
-            pred_logits = net(x)
-            loss = criterion(pred_logits, y)
-            loss.backward()
-            optimizer.step()
-
-            epoch_loss += loss.item()
-
-            count+=1
-
-        
-        
+        net, epoch_loss = sgd_train_step(net, optimizer, criterion, trainloader)
         print("Epoch: ", i+1, "Loss: ", epoch_loss)
+    
     print("Training Done!")
     return net
 
