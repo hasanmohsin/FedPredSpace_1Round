@@ -56,11 +56,13 @@ def get_bike(normalize = True, batch_size = 1):
         .cache()
     )
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = (
         dataset.take(train_size).shuffle(buffer_size=train_size).batch(batch_size)
+    train_dataset = DataLoader(
+        dataset.take(train_size), batch_size, shuffle = True
     )
-    test_dataset = dataset.skip(train_size).batch(batch_size)
-
+    test_dataset = DataLoader(
+        dataset.skip(train_size), batch_size, shuffle = True
+    )
     return train_dataset, test_dataset
 
 
