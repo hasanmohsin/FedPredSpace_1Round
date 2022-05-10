@@ -5,6 +5,35 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+#do an noniid split of the dataset into num_clients parts
+# each client gets equal sized dataset specified by the client_data_size
+def non_iid_mnist_split(dataset, num_clients, client_data_size, batch_size, shuffle, shuffle_digits=True):
+    assert(num_clients>0 and num_clients<=10)
+
+    digits=torch.arange(10) if shuffle_digits==False else torch.randperm(10, generator=torch.Generator().manual_seed(0))
+
+    # split the digits in a fair way
+    digits_split=list()
+    i=0
+    for n in range(num_clients, 0, -1):
+        inc=int((10-i)/n)
+        digits_split.append(digits[i:i+inc])
+        i+=inc
+
+    # load and shuffle num_clients*client_data_size from the dataset
+    loader = torch.utils.data.DataLoader(dataset,
+                                        batch_size=num_clients*client_data_size,
+                                        shuffle=shuffle)
+    dataiter = iter(loader)
+    images_train_mnist, labels_train_mnist = dataiter.next()
+
+    data_splitted=list()
+    for i in range(num_clients):
+        idx=torch.stack([y_ == labels_train_mnist for y_ in digits_split[i]]).sum(0).bool() # get indices for the digits
+        data_splitted.append(torch.utils.data.DataLoader(torch.utils.data.TensorDataset(images_train_mnist[idx], labels_train_mnist[idx]), batch_size=batch_size, shuffle=shuffle))
+
+    return data_splitted
+
 #do an iid split of the dataset into num_clients parts
 # each client gets equal sized dataset
 def iid_split(data, num_clients, batch_size):
