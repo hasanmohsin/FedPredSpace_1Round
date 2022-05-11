@@ -11,7 +11,11 @@ class FedAvg:
                 num_rounds, epoch_per_client,
                 batch_size):
 
+        # lr for SGD
         lr = 0.01
+
+        #lr for ADAM
+        #lr = 1e-3
 
         self.all_data = traindata
 
@@ -26,7 +30,7 @@ class FedAvg:
             self.client_nets.append(copy.deepcopy(base_net))
             
             self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = lr, momentum=0.9))
-
+            #self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr = lr))
 
         self.num_rounds = num_rounds
         self.epoch_per_client = epoch_per_client
@@ -136,8 +140,7 @@ class EP_MCMC:
     def local_train(self, client_num):
         self.client_train[client_num].train()
 
-    def get_client_sample_mean_cov(self, client_num):
-        #a list of sampled nets from training client
+    def get_client_samples_as_vec(self, client_num):
         client_samples = self.client_train[client_num].sampled_nets
         c_vectors = []
         for sample in client_samples:
@@ -146,6 +149,12 @@ class EP_MCMC:
             c_vec = torch.nn.utils.parameters_to_vector(sample_net.parameters())
             c_vectors.append(c_vec)
         c_vectors = torch.stack(c_vectors, dim=0)
+
+        return c_vectors
+
+    def get_client_sample_mean_cov(self, client_num):
+        #a list of sampled nets from training client
+        c_vectors = self.get_client_samples_as_vec(client_num)
         mean = torch.mean(c_vectors, dim=0)
         
         #too memory intensive - approximate with diagonal matrix
@@ -265,7 +274,141 @@ class F_MCMC(EP_MCMC):
                 print("Client {}, test accuracy: {}".format(c, acc_c))
         return
 
+#Federated posterior averaging
+class FedPA(EP_MCMC):
+    def __init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, epoch_per_client,
+                batch_size, device, rho = 1.0):
+        EP_MCMC.__init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, epoch_per_client,
+                batch_size, device)
 
-#class FedPA(FedAvg):
+        self.rho = rho
+        lr = 1.0 # global learning rate should likely be higher
+        self.global_train.net.requires_grad = True
+        self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = 0.1, momentum=0.9)
+
+    def get_global_vec(self):
+        #sample_net = copy.deepcopy(self.base_net)
+        #sample_net.load_state_dict(sample)
+        g_vec = torch.nn.utils.parameters_to_vector(self.global_train.net.parameters())
+        return g_vec
+
+    #compute local delta for client_num, based on its samples
+    def local_delta(self, client_num):
+        #client samples as tensor N x num_params
+        c_vectors = self.get_client_samples_as_vec(client_num)
+        global_vec = self.get_global_vec()
+
+        #first compute sample means, 
+        #ranges = torch.arange(1, c_vectors.shape[0]+1).reshape(-1,1)
+        #sample_means = torch.cumsum(c_vectors, dim=  0)/ranges
+        
+        num_samples = c_vectors.shape[0]
+        
+        #initialize
+        delta_sim = global_vec - c_vectors[0,:]
+        rhot = 1
+        u = c_vectors[0,:]
+        u_vecs = torch.clone(u).reshape(1, -1)
+
+        if num_samples == 1:
+            return delta_sim/rhot
+
+        v = c_vectors[1,:] - c_vectors[0,:] #assuming at least 2 samples
+        v_vecs = torch.clone(v).reshape(1,-1)
+
+        #u = c_vectors - sample_means
+        for t in range(c_vectors.shape[0]):
+            if t == 0:
+                # from second sample onwards
+                continue 
+                #sample_mean = torch.zeros(c_vectors[0,:].shape)#c_vectors[0, :]
+            else:
+                sample_mean = torch.mean(c_vectors[:t, :], dim = 0)
+
+            u = (c_vectors[t,:] - sample_mean)
+            u_vecs = torch.cat([u_vecs, u.reshape(1,-1)], dim=0)
+
+            v_1_t = u
+            v = v_1_t
+            #compute v_(t-1)_t
+            for k in range(1, t):
+                gamma_k = self.rho * k/(k+1)
+                num =  gamma_k *(torch.dot(v_vecs[k, :], u)) * v_vecs[k,:]
+                den = 1 + gamma_k * (torch.dot(v_vecs[k,:], u_vecs[k,:]))
+                v -= num/den 
+            v_vecs = torch.cat([v_vecs, v.reshape(1, -1)], dim=0)
+
+            #update delta
+            uv = torch.dot(u, v)
+            gamma_t = self.rho * (num_samples-1)/num_samples
+
+            diff_fact_num =  gamma_t*(num_samples*torch.dot(u, delta_sim) - uv)
+            diff_fact_den = 1+gamma_t*(uv)
+
+            delta_sim = delta_sim - (1+diff_fact_num/diff_fact_den)*v/num_samples
+        
+        rhot = 1/(1+(num_samples - 1)*self.rho)
+        return delta_sim/rhot
+
+    def global_opt(self, g_delta):
+        self.global_optimizer.zero_grad()
+
+        #set global optimizer grad
+        torch.nn.utils.vector_to_parameters(g_delta, self.base_net.parameters())
+
+        #copy gradient data over to global net
+        for p, g in zip(self.global_train.net.parameters(), self.base_net.parameters()):
+            #print("p parmaeter ", p)
+            #print("p grad paramter", p.grad)
+            #print("p grad param.data ", p.grad.data)
+            p.grad = g.data
+
+        #update
+        self.global_optimizer.step()
+
+        return 
+
+    def global_update_step(self):
+        deltas = []
+
+        #train client models/sample
+        for client_num in range(self.num_clients):
+            self.local_train(client_num)
+            delta = self.local_delta(client_num)
+            deltas.append(delta)
+        deltas = torch.stack(deltas, dim=0)
+        
+        #global gradient
+        g_delta = torch.mean(deltas, dim= 0)
+        
+        #take optimizer step in direction of g_delta for global net
+        self.global_opt(g_delta)
+        return 
+        
+    
+    def global_to_clients(self):
+        for c in range(self.num_clients):
+            self.client_train[c].net.load_state_dict(self.global_train.net.state_dict())
+    
+    def train(self, valloader):
+        acc = utils.classify_acc(self.global_train.net, valloader)
+        
+        for i in range(self.num_rounds):
+            self.global_update_step()
+            self.global_to_clients()
+            acc = utils.classify_acc(self.global_train.net, valloader) #self.global_train.test_acc(valloader)
+            print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+
+        #for reference, check client accuracies
+        for c in range(self.num_clients):
+            acc_c = self.client_train[c].test_acc(valloader)
+            print("Client {}, test accuracy: {}".format(c, acc_c))
+        return
+
+
 
 #class PVI(FedAvg):

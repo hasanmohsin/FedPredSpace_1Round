@@ -54,13 +54,13 @@ class cSGHMC:
         self.num_batch = self.datasize/self.batch_size + 1
         self.init_lr = 0.5
         self.M = 4 #num_cycles
-        self.cycle_len = (self.num_epochs/self.M)
+        self.cycle_len = 6#(self.num_epochs/self.M)
         self.T = self.num_epochs*self.num_batch
         self.criterion = torch.nn.CrossEntropyLoss()
         self.temperature = 1/self.datasize
         self.alpha = 0.9
 
-        self.max_samples = 15
+        self.max_samples = 4#15
         self.sampled_nets = []
 
     #gradient rule for SG Hamiltonian Monte Carlo

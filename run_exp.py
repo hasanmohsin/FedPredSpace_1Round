@@ -21,6 +21,7 @@ def main(args):
     batch_size = 100
     num_epochs = 24
     
+    #mode = "FedPA"
     #mode = "fed_SGD"
     mode = "F_MCMC"
     #mode = "cSGHMC"
@@ -49,12 +50,21 @@ def main(args):
         fed_avg_trainer = fed_algos.FedAvg(num_clients = 5, 
                                         base_net = base_net, 
                                         traindata = train_data, 
-                                        num_rounds = 10, 
-                                        epoch_per_client = 2,
+                                        num_rounds = 6, 
+                                        epoch_per_client = 4,
                                         batch_size = batch_size)
         fed_avg_trainer.train(valloader)
         acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+    elif mode == "FedPA":
+        base_net = models.LinearNet(inp_dim = 28*28, num_hidden = 100, out_dim = 10)
 
+        fed_pa = fed_algos.FedPA(num_clients = 5,
+                                    base_net = base_net,
+                                    traindata=train_data,
+                                    num_rounds = 4,#1,
+                                    epoch_per_client = 24,
+                                    batch_size = batch_size, device=device)
+        fed_pa.train(valloader=valloader)
     elif mode == "EP_MCMC":
         base_net = models.LinearNet(inp_dim = 28*28, num_hidden = 100, out_dim = 10)
 
