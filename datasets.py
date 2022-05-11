@@ -60,6 +60,43 @@ def iid_split(data, num_clients, batch_size):
     #array of datasets
     return c_dataloaders, lens
 
+## Air quality dataset
+# 6549 training points
+# 2808 validation points
+def get_airquality(normalize = True, batch_size = 1):
+    col1=['DATE','TIME','CO_GT','PT08_S1_CO','NMHC_GT','C6H6_GT','PT08_S2_NMHC',
+     'NOX_GT','PT08_S3_NOX','NO2_GT','PT08_S4_NO2','PT08_S5_O3','T','RH','AH']
+
+    df1 = pd.read_excel('Dataset/AirQualityUCI.xlsx',header=None,skiprows=1, na_filter=True,names=col1)
+    df1 = df1.dropna()
+    df1['DATE']=pd.to_datetime(df1.DATE, format='%d-%m-%Y')
+    df1['MONTH']= df1['DATE'].dt.month
+    df1['HOUR']=df1['TIME'].apply(lambda x: int(str(x).split(':')[0]))
+    df1 = df1.drop(columns=['NMHC_GT'])
+    df1 = df1.drop(columns=['DATE'])
+    df1 = df1.drop(columns=['TIME'])
+    col1 = df1.columns.tolist()
+    if normalize:
+        df1 =(df1-df1.min())/(df1.max()-df1.min())
+    data=df1[col1]
+    target = data.pop('CO_GT')
+    ds = tf.data.Dataset.from_tensor_slices((data.values, target.values))
+    print((ds))
+    train_size = int(len(ds) * 0.7)
+    dataset = (
+        ds
+        .map(lambda x, y: (x, tf.cast(y, tf.float32)))
+        .prefetch(buffer_size=len(ds))
+        .cache()
+    )
+    # We shuffle with a buffer the same size as the dataset.
+    train_dataset = torch.utils.data.DataLoader(
+        dataset.take(train_size), batch_size, shuffle = True
+    )
+    test_dataset = torch.utils.data.DataLoader(
+        dataset.skip(train_size), batch_size, shuffle = True
+    )
+    return train_dataset, test_dataset, dataset
 
 ## Bike Sharing dataset
 # 511 training points
