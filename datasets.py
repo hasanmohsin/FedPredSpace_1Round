@@ -85,10 +85,10 @@ def get_bike(normalize = True, batch_size = 1):
         .cache()
     )
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = DataLoader(
+    train_dataset = torch.utils.data.DataLoader(
         dataset.take(train_size), batch_size, shuffle = True
     )
-    test_dataset = DataLoader(
+    test_dataset = torch.utils.data.DataLoader(
         dataset.skip(train_size), batch_size, shuffle = True
     )
     return train_dataset, test_dataset
