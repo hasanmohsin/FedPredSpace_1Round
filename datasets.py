@@ -168,7 +168,7 @@ def airquality_noniid_split(numclient, df):
     for i in range(numclient):
         data=df.loc[df['NO2_GT'] >=float(i/numclient)].loc[df['NO2_GT'] <float((i+1)/numclient)]
         target = data.pop('CO_GT')
-        loc.append(tf.data.Dataset.from_tensor_slices((data.values, target.values)))
+        loc.append(torch.utils.data.DataLoader(tf.data.Dataset.from_tensor_slices((data.values, target.values))))
     return loc
 
 ## Air quality dataset
