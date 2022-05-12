@@ -90,13 +90,13 @@ def get_airquality(normalize = True, batch_size = 1):
         .cache()
     )
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = torch.utils.data.DataLoader(
+    trainloader = torch.utils.data.DataLoader(
         dataset.take(train_size), batch_size, shuffle = True
     )
-    test_dataset = torch.utils.data.DataLoader(
+    testloader = torch.utils.data.DataLoader(
         dataset.skip(train_size), batch_size, shuffle = True
     )
-    return train_dataset, test_dataset, dataset
+    return trainloader, testloader, dataset
 
 ## Bike Sharing dataset
 # 511 training points
@@ -122,13 +122,13 @@ def get_bike(normalize = True, batch_size = 1):
         .cache()
     )
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = torch.utils.data.DataLoader(
+    trainloader = torch.utils.data.DataLoader(
         dataset.take(train_size), batch_size, shuffle = True
     )
-    test_dataset = torch.utils.data.DataLoader(
+    testloader = torch.utils.data.DataLoader(
         dataset.skip(train_size), batch_size, shuffle = True
     )
-    return train_dataset, test_dataset
+    return trainloader, testloader, dataset
 
 
 ## MNIST dataset
@@ -157,6 +157,156 @@ def get_mnist(use_cuda, batch_size, get_datamat = False):
     #10,000 datapoints
     val_data = datasets.MNIST(
         root = "../../data",
+        train=False,
+        download = True,
+        transform = transform_val
+    )
+
+
+    if use_cuda:
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=True
+                                                , num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=True
+                                                ,num_workers=3)
+
+    else:
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=False
+                                                ,num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=False
+                                             ,num_workers=3)
+    if get_datamat:
+        return trainloader, valloader, train_data
+    else:
+        return trainloader, valloader
+
+
+
+## EMNIST dataset
+# 60,000 train points, 
+# 10,000 validation points
+def get_emnist(use_cuda, batch_size, get_datamat = False):
+    # data augmentation
+    transform_train = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.1307,), std=(0.3081,))
+    ])
+
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.1307,), std=(0.3081,))
+    ])
+
+    #60,000 datapoints, 28x28
+    train_data = datasets.EMNIST(
+        root = '../Dataset',
+        train =True,
+        transform = transform_train,
+        download= True
+    )
+
+    #10,000 datapoints
+    val_data = datasets.EMNIST(
+        root = "../Dataset",
+        train=False,
+        download = True,
+        transform = transform_val
+    )
+
+
+    if use_cuda:
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=True
+                                                , num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=True
+                                                ,num_workers=3)
+
+    else:
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=False
+                                                ,num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=False
+                                             ,num_workers=3)
+    if get_datamat:
+        return trainloader, valloader, train_data
+    else:
+        return trainloader, valloader
+
+## CIFAR10 dataset
+# 50,000 train points, 
+# 10,000 validation points
+def get_cifar10(use_cuda, batch_size, get_datamat = False):
+    # data augmentation
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+
+    #60,000 datapoints, 28x28
+    train_data = datasets.CIFAR10(
+        root = '../Dataset',
+        train =True,
+        transform = transform_train,
+        download= True
+    )
+
+    #10,000 datapoints
+    val_data = datasets.CIFAR10(
+        root = "../Dataset",
+        train=False,
+        download = True,
+        transform = transform_val
+    )
+
+
+    if use_cuda:
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=True
+                                                , num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=True
+                                                ,num_workers=3)
+
+    else:
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, pin_memory=False
+                                                ,num_workers=3)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False, pin_memory=False
+                                             ,num_workers=3)
+    if get_datamat:
+        return trainloader, valloader, train_data
+    else:
+        return trainloader, valloader
+
+## CIFAR100 dataset
+# 50,000 train points, 
+# 10,000 validation points
+def get_cifar100(use_cuda, batch_size, get_datamat = False):
+    # data augmentation
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+
+    #50,000 datapoints,
+    train_data = datasets.CIFAR100(
+        root = '../Dataset',
+        train =True,
+        transform = transform_train,
+        download= True
+    )
+
+    #10,000 datapoints
+    val_data = datasets.CIFAR100(
+        root = "../Dataset",
         train=False,
         download = True,
         transform = transform_val
