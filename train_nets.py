@@ -41,22 +41,30 @@ def sgd_train(net, lr, num_epochs, trainloader):
 class cSGHMC:
     def __init__(self,
                   base_net, 
-                  trainloader, device):
+                  trainloader, device, task):
         self.net = base_net
         self.trainloader = trainloader
         self.device = device
-    
+
+        #classify or regression
+        self.task = task
+
         #hard-coded params
         self.num_epochs = 24
         self.weight_decay = 5e-4
         self.datasize = 60000
         self.batch_size = 100
         self.num_batch = self.datasize/self.batch_size + 1
-        self.init_lr = 0.5
+        self.init_lr = 0.1 #0.5
         self.M = 4 #num_cycles
         self.cycle_len = 6#(self.num_epochs/self.M)
         self.T = self.num_epochs*self.num_batch
-        self.criterion = torch.nn.CrossEntropyLoss()
+
+        if self.task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+        
         self.temperature = 1/self.datasize
         self.alpha = 0.9
 
@@ -133,6 +141,9 @@ class cSGHMC:
 
         out = x.data.new(Nsamples, x.shape[0], self.net.out_dim)
 
+        if self.task != "classify":
+            out_probs = False
+
         # iterate over all saved weight configuration samples
         for idx, weight_dict in enumerate(self.sampled_nets):
             if idx == Nsamples:
@@ -148,8 +159,13 @@ class cSGHMC:
         return out
 
     def test_acc(self, testloader):
+        #for classification
         total = 0
         correct = 0
+
+        #FOR REGRESSION tasks
+        criterion = torch.nn.MSELoss()
+        total_loss  = 0.0
 
         for batch_idx, (x, y) in enumerate(testloader):
             pred_list = self.ensemble_inf(x, out_probs = True)
@@ -157,20 +173,27 @@ class cSGHMC:
             #average to get p(y | x, D)
             # shape: batch_size x output_dim
             pred = torch.mean(pred_list, dim=0, keepdims=False)
-            _, pred_class = torch.max(pred, 1)    
+            
+            if self.task == "classify":
+                _, pred_class = torch.max(pred, 1)    
 
+                total += y.size(0)
+                correct += (pred_class == y).sum().item()
+            else:
+                loss = criterion(pred, y)
+                total_loss += loss.item()
 
+        if self.task == "classify":
+            acc = 100*correct/total
+            print("Accuracy on test set: ", acc)
+            return acc
+        else:
+            print("MSE on test set: ", total_loss)
+            return total_loss
 
-            total += y.size(0)
-            correct += (pred_class == y).sum().item()
+    def train(self, num_epochs = 24):
 
-        acc = 100*correct/total
-        print("Accuracy on test set: ", acc)
-        return acc
-
-    def train(self):
-
-        for epoch in range(self.num_epochs):
+        for epoch in range(num_epochs):
             self.train_epoch(epoch)
 
             # 3 models sampled every 8 epochs

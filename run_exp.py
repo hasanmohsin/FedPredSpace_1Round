@@ -23,7 +23,7 @@ def main(args):
     
     #mode = "fed_pa"
     #mode = "fed_sgd"
-    mode = "f_mcmc"
+    mode = args.mode #"f_mcmc"
     #mode = "global_bayes"
     ####################
 
@@ -41,6 +41,9 @@ def main(args):
     ################################
     task = "classify"
 
+    #MNIST default
+    inp_dim = 28*28
+    
     if args.dataset == "mnist":
         trainloader, valloader, train_data  = datasets.get_mnist(use_cuda, args.batch_size, get_datamat=True)
     elif args.dataset == "cifar10":
@@ -49,16 +52,25 @@ def main(args):
         trainloader, valloader, train_data  = datasets.get_cifar100(use_cuda, args.batch_size, get_datamat=True)
     elif args.dataset == "emnist":
         trainloader, valloader, train_data  = datasets.get_emnist(use_cuda, args.batch_size, get_datamat=True)
-
+    elif args.dataset == "f_mnist":
+        trainloader, valloader, train_data  = datasets.get_fashion_mnist(use_cuda, args.batch_size, get_datamat=True)
+    
+    #regression datasets
     elif args.dataset == "bike":
         task = "regression"
         trainloader, valloader, train_data = datasets.get_bike(batch_size = args.batch_size)
+        out_dim = 1
+        inp_dim = len(train_data[0][0])
     elif args.dataset == "airquality":
         task = "regression"
         trainloader, valloader, train_data = datasets.get_airquality(batch_size=args.batch_size)
+        out_dim = 1
+        inp_dim = len(train_data[0][0])
 
+    if task == "classify":
+        out_dim = len(train_data.classes)
     #set up network
-    base_net = models.LinearNet(inp_dim=28*28, num_hidden = 100, out_dim=10)
+    base_net = models.LinearNet(inp_dim=inp_dim, num_hidden = 100, out_dim=out_dim)
 
     ################################
     # TRAINING ALGORITHMS
@@ -75,17 +87,21 @@ def main(args):
                                         traindata = train_data, 
                                         num_rounds = args.num_rounds, 
                                         epoch_per_client = args.num_epochs_per_client,
-                                        batch_size = args.batch_size)
+                                        batch_size = args.batch_size, 
+                                        non_iid = args.non_iid,
+                                        task = task)
         fed_avg_trainer.train(valloader)
         acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
-    elif mode == "fed__pa":
+    elif mode == "fed_pa":
 
         fed_pa = fed_algos.FedPA(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data,
                                     num_rounds = 4,#1,
-                                    epoch_per_client = 24,
-                                    batch_size = args.batch_size, device=device)
+                                    epoch_per_client = 6,
+                                    batch_size = args.batch_size, device=device,
+                                    non_iid = args.non_iid,
+                                    task = task)
         fed_pa.train(valloader=valloader)
     elif mode == "ep_mcmc":
         ep_mcmc = fed_algos.EP_MCMC(num_clients = args.num_clients,
@@ -93,7 +109,9 @@ def main(args):
                                     traindata=train_data,
                                     num_rounds = 1,
                                     epoch_per_client = 24,
-                                    batch_size = args.batch_size, device=device)
+                                    batch_size = args.batch_size, device=device,
+                                    non_iid = args.non_iid,
+                                    task = task)
         ep_mcmc.train(valloader=valloader)
     
     elif mode == "f_mcmc":
@@ -102,7 +120,9 @@ def main(args):
                                     traindata=train_data,
                                     num_rounds = 1,
                                     epoch_per_client = 24,
-                                    batch_size = args.batch_size, device=device)
+                                    batch_size = args.batch_size, device=device,
+                                    non_iid = args.non_iid,
+                                    task = task)
         f_mcmc.train(valloader=valloader)
 
     elif mode == "global_bayes":
@@ -119,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=12)
     
     parser.add_argument('--dataset', type= str, default = "MNIST")
-    parser.add_argument('--noniid', action="store_true") 
+    parser.add_argument('--non_iid', action="store_true") 
 
     parser.add_argument('--mode', type=str, default = "fed_sgd")
 

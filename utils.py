@@ -27,3 +27,21 @@ def classify_acc(net, dataloader):
     acc = 100*correct/total
     print("Accuracy on test set: ", acc)
     return acc
+
+# compute MSE loss for a regression task
+def classify_acc(net, dataloader):
+    # test eval
+
+    #eval mode
+    net = net.eval()
+    criterion = torch.nn.MSELoss()
+
+    total = 0.0
+
+    for x,y in dataloader:
+        pred = net(x)
+        
+        loss = criterion(y, pred)
+        total += loss.item()
+    print("MSE on test set: ", total)
+    return total

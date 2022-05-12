@@ -9,7 +9,7 @@ class FedAvg:
     def __init__(self, num_clients, base_net, 
                 traindata, 
                 num_rounds, epoch_per_client,
-                batch_size):
+                batch_size, non_iid = False, task = "classify"):
 
         # lr for SGD
         lr = 0.01
@@ -24,7 +24,15 @@ class FedAvg:
         #initialize nets and data for all clients
         self.client_nets = []
         self.optimizers = []
-        self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, batch_size)
+
+        if non_iid:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_mnist_split(dataset = traindata, 
+                                                                                        num_clients = num_clients, 
+                                                                                        client_data_size = (60000//num_clients), 
+                                                                                        batch_size = batch_size, 
+                                                                                        shuffle=False)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, batch_size)
 
         for c in range(num_clients):
             self.client_nets.append(copy.deepcopy(base_net))
@@ -35,7 +43,11 @@ class FedAvg:
         self.num_rounds = num_rounds
         self.epoch_per_client = epoch_per_client
 
-        self.criterion = torch.nn.CrossEntropyLoss()
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+
         self.global_net = copy.deepcopy(base_net)
 
     #perform 1 epoch of updates on client_num
@@ -112,7 +124,7 @@ class EP_MCMC:
     def __init__(self, num_clients, base_net, 
                 traindata, 
                 num_rounds, epoch_per_client,
-                batch_size, device):
+                batch_size, device, non_iid = False, task = "classify"):
         
         self.all_data = traindata
 
@@ -120,25 +132,38 @@ class EP_MCMC:
 
         #initialize nets and data for all clients
         self.client_train = []
-        self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, batch_size)
-
+        if non_iid:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_mnist_split(dataset = traindata, 
+                                                                                        num_clients = num_clients, 
+                                                                                        client_data_size = (60000//num_clients), 
+                                                                                        batch_size = batch_size, 
+                                                                                        shuffle=False)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, batch_size)
+    
         for c in range(num_clients):
             self.client_train.append(train_nets.cSGHMC(copy.deepcopy(base_net), 
                                                         trainloader=self.client_dataloaders[c],
-                                                        device = device))
+                                                        device = device, task = task))
 
         self.num_rounds = num_rounds
         self.epoch_per_client = epoch_per_client
 
-        self.criterion = torch.nn.CrossEntropyLoss()
+        self.task = task
+
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+        
         self.global_train = train_nets.cSGHMC(copy.deepcopy(base_net), 
                                             trainloader =None,
-                                            device = device)#copy.deepcopy(base_net)
+                                            device = device, task = task)#copy.deepcopy(base_net)
         self.base_net = base_net
         self.num_g_samples = 10
 
     def local_train(self, client_num):
-        self.client_train[client_num].train()
+        self.client_train[client_num].train(self.epoch_per_client)
 
     def get_client_samples_as_vec(self, client_num):
         client_samples = self.client_train[client_num].sampled_nets
@@ -223,18 +248,18 @@ class F_MCMC(EP_MCMC):
     def __init__(self, num_clients, base_net, 
                 traindata, 
                 num_rounds, epoch_per_client,
-                batch_size, device):
+                batch_size, device, non_iid = False, task = "classify"):
         EP_MCMC.__init__(self, num_clients, base_net, 
                 traindata, 
                 num_rounds, epoch_per_client,
-                batch_size, device)
+                batch_size, device, non_iid, task)
 
     #do nothing in aggregate function
     def aggregate(self):
         return
     
     #prediction on input x
-    def predict(self, x):
+    def predict_classify(self, x):
         global_pred = 1.0
         for c in range(self.num_clients):
             pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
@@ -247,7 +272,32 @@ class F_MCMC(EP_MCMC):
             global_pred *= pred
         return global_pred/torch.sum(global_pred)
 
-    def test_acc(self, testloader):
+    def predict_regr(self,x):
+        global_pred = 0.0
+        var_sum = 0.0
+
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+                
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
+            pred_var = torch.var(pred_list, dim = 0, keepdims = False)
+
+            #assuming a uniform posterior
+            global_pred += pred_mean/pred_var
+            var_sum += 1/pred_var
+        
+        return global_pred/var_sum
+
+
+    def predict(self, x):
+        if self.task == "classify":
+            return self.predict_classify(x)
+        else:
+            return self.predict_regr(x)
+
+    def test_classify(self, testloader):
         total = 0
         correct = 0
 
@@ -262,6 +312,24 @@ class F_MCMC(EP_MCMC):
         acc = 100*correct/total
         print("Accuracy on test set: ", acc)
         return acc
+    
+    def test_mse(self, testloader):
+        total_loss = 0.0
+        criterion = torch.nn.MSELoss()
+
+        for batch_idx,(x,y) in  enumerate(testloader):
+            pred = self.predict(x)
+            total_loss += criterion(pred, y).item()
+
+        print("MSE on test set: ", total_loss)
+        return total_loss    
+
+    def test_acc(self, testloader):
+        if self.task == "classify":
+            return self.test_classify(testloader)
+        else:
+            return self.test_mse(testloader)
+
 
     def train(self, valloader):
         for i in range(self.num_rounds):
@@ -279,11 +347,11 @@ class FedPA(EP_MCMC):
     def __init__(self, num_clients, base_net, 
                 traindata, 
                 num_rounds, epoch_per_client,
-                batch_size, device, rho = 1.0):
+                batch_size, device, rho = 1.0, non_iid = False, task = "classify"):
         EP_MCMC.__init__(self, num_clients, base_net, 
                 traindata, 
                 num_rounds, epoch_per_client,
-                batch_size, device)
+                batch_size, device, non_iid, task)
 
         self.rho = rho
         lr = 1.0 # global learning rate should likely be higher
