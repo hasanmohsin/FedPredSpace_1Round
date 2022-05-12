@@ -19,7 +19,7 @@ def non_iid_mnist_split(dataset, num_clients, client_data_size, batch_size, shuf
     # split the digits in a fair way
     digits_split = list()
     i = 0
-    for n in range(5, 0, -1):
+    for n in range(min(10, num_clients), 0, -1):
         inc = int((10 - i) / n)
         digits_split.append(digits[i:i + inc])
         i += inc
@@ -33,7 +33,7 @@ def non_iid_mnist_split(dataset, num_clients, client_data_size, batch_size, shuf
 
     data_splitted = list()
     for i in range(num_clients):
-        idx = torch.stack([y_ == labels_train_mnist for y_ in digits_split[i % 5]]).sum(0).bool()
+        idx = torch.stack([y_ == labels_train_mnist for y_ in digits_split[i % min(10, num_clients)]]).sum(0).bool()
         idx_out = torch.stack([y_ == labels_train_mnist for y_ in torch.arange(10)]).sum(0).bool()
 
         data_t = torch.cat((images_train_mnist[idx][:int(client_data_size * noniidpercent / 100)],
