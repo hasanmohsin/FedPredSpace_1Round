@@ -86,14 +86,19 @@ def get_realestate(normalize = True, batch_size = 1):
         .prefetch(buffer_size=len(ds))
         .cache()
     )
+    train_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:train_size, :]).float(),
+                                              torch.Tensor(target.values[:train_size]).float())
+    test_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[train_size:, :]).float(),
+                                             torch.Tensor(target.values[train_size:]).float())
+
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = torch.utils.data.DataLoader(
-        dataset.take(train_size), batch_size, shuffle = True
+    trainloader = torch.utils.data.DataLoader(
+        train_ds, batch_size, shuffle=True
     )
-    test_dataset = torch.utils.data.DataLoader(
-        dataset.skip(train_size), batch_size, shuffle = True
+    testloader = torch.utils.data.DataLoader(
+        test_ds, batch_size, shuffle=True
     )
-    return train_dataset, test_dataset, df1
+    return trainloader, testloader, train_ds, df1
 
 
 ## Forest Fire dataset
@@ -123,14 +128,19 @@ def get_forestfire(normalize = True, batch_size = 1):
         .prefetch(buffer_size=len(ds))
         .cache()
     )
+    train_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:train_size, :]).float(),
+                                              torch.Tensor(target.values[:train_size]).float())
+    test_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[train_size:, :]).float(),
+                                             torch.Tensor(target.values[train_size:]).float())
+
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = torch.utils.data.DataLoader(
-        dataset.take(train_size), batch_size, shuffle = True
+    trainloader = torch.utils.data.DataLoader(
+        train_ds, batch_size, shuffle=True
     )
-    test_dataset = torch.utils.data.DataLoader(
-        dataset.skip(train_size), batch_size, shuffle = True
+    testloader = torch.utils.data.DataLoader(
+        test_ds, batch_size, shuffle=True
     )
-    return train_dataset, test_dataset, df1
+    return trainloader, testloader, train_ds, df1
 
 ## Wine Quality dataset
 # 1119 training points
@@ -153,14 +163,19 @@ def get_winequality(normalize = True, batch_size = 1):
         .prefetch(buffer_size=len(ds))
         .cache()
     )
+    train_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:train_size, :]).float(),
+                                              torch.Tensor(target.values[:train_size]).float())
+    test_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[train_size:, :]).float(),
+                                             torch.Tensor(target.values[train_size:]).float())
+
     # We shuffle with a buffer the same size as the dataset.
-    train_dataset = torch.utils.data.DataLoader(
-        dataset.take(train_size), batch_size, shuffle = True
+    trainloader = torch.utils.data.DataLoader(
+        train_ds, batch_size, shuffle=True
     )
-    test_dataset = torch.utils.data.DataLoader(
-        dataset.skip(train_size), batch_size, shuffle = True
+    testloader = torch.utils.data.DataLoader(
+        test_ds, batch_size, shuffle=True
     )
-    return train_dataset, test_dataset, df1
+    return trainloader, testloader, train_ds, df1
 
 
 ## Does a non iid split on the airquality dataset,
@@ -170,7 +185,8 @@ def airquality_noniid_split(numclient, df):
     for i in range(numclient):
         data=df.loc[df['NO2_GT'] >=float(i/numclient)].loc[df['NO2_GT'] <float((i+1)/numclient)]
         target = data.pop('CO_GT')
-        loc.append(torch.utils.data.DataLoader(tf.data.Dataset.from_tensor_slices((data.values, target.values))))
+        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values).float(), torch.Tensor(target.values).float())
+        loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
     return loc
 
 ## Air quality dataset
@@ -207,7 +223,7 @@ def get_airquality(normalize = True, batch_size = 1):
     testloader = torch.utils.data.DataLoader(
         test_ds, batch_size, shuffle = True
     )
-    return trainloader, testloader, train_ds
+    return trainloader, testloader, train_ds, df1
 
 
 ## Bike Sharing dataset
@@ -239,7 +255,7 @@ def get_bike(normalize = True, batch_size = 1):
     testloader = torch.utils.data.DataLoader(
         test_ds, batch_size, shuffle = True
     )
-    return trainloader, testloader, train_ds
+    return trainloader, testloader, train_ds, df1
 
 
 ## MNIST dataset
