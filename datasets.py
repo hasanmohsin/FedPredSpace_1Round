@@ -5,22 +5,24 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-#do an noniid split of the dataset into num_clients parts
+# do an noniid split of the dataset into num_clients parts
 # each client gets equal sized dataset specified by the client_data_size
 # noniidpercent is a number between 0 and 100 indicating the level of non iid i.e. 100 means completely different
 # labels for each client, 0 means iid
-def non_iid_mnist_split(dataset, num_clients, client_data_size, batch_size, shuffle, shuffle_digits=True,
-                        noniidpercent=100):
-    digits = torch.arange(10) if shuffle_digits == False else torch.randperm(10,
-                                                                             generator=torch.Generator().manual_seed(0))
+# outdim is the number of possible classes corresponding to the dataset
+def non_iid_split(dataset, num_clients, client_data_size, batch_size, shuffle, shuffle_digits=True,
+                        noniidpercent=100, outdim=10):
+    digits = torch.arange(outdim) if shuffle_digits == False else torch.randperm(10,
+                                                                                 generator=torch.Generator().manual_seed(
+                                                                                     0))
 
     lens = num_clients * [client_data_size]
 
     # split the digits in a fair way
     digits_split = list()
     i = 0
-    for n in range(min(10, num_clients), 0, -1):
-        inc = int((10 - i) / n)
+    for n in range(min(outdim, num_clients), 0, -1):
+        inc = int((outdim - i) / n)
         digits_split.append(digits[i:i + inc])
         i += inc
 
@@ -30,11 +32,10 @@ def non_iid_mnist_split(dataset, num_clients, client_data_size, batch_size, shuf
                                          shuffle=shuffle)
     dataiter = iter(loader)
     images_train_mnist, labels_train_mnist = dataiter.next()
-
     data_splitted = list()
     for i in range(num_clients):
-        idx = torch.stack([y_ == labels_train_mnist for y_ in digits_split[i % min(10, num_clients)]]).sum(0).bool()
-        idx_out = torch.stack([y_ == labels_train_mnist for y_ in torch.arange(10)]).sum(0).bool()
+        idx = torch.stack([y_ == labels_train_mnist for y_ in digits_split[i % min(outdim, num_clients)]]).sum(0).bool()
+        idx_out = torch.stack([y_ == labels_train_mnist for y_ in torch.arange(outdim)]).sum(0).bool()
 
         data_t = torch.cat((images_train_mnist[idx][:int(client_data_size * noniidpercent / 100)],
                             images_train_mnist[idx_out][:int(client_data_size * (1 - noniidpercent / 100))]))
