@@ -132,7 +132,7 @@ def main(args):
                     'M': 5, #4, # num_cycles 
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
-                    'max_samples': 15,
+                    'max_samples': 6,#15,
                     'outdim': out_dim
     }
 
@@ -147,7 +147,7 @@ def main(args):
         acc = utils.classify_acc(base_net, valloader)
     elif mode == "fed_sgd":
         sgd_hyperparams['device'] = device
-        
+
         fed_avg_trainer = fed_algos.FedAvg(num_clients = args.num_clients, 
                                         base_net = base_net, 
                                         traindata = train_data, 
