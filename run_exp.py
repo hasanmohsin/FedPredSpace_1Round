@@ -19,9 +19,9 @@ def main(args):
     utils.makedirs(args.save_dir)
 
     if args.mode == "fed_sgd":
-        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type)    
+        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid)    
     else:
-         fname = "{}/{}_{}_{}_clients_{}_rounds_log.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds)    
+         fname = "{}/{}_{}_{}_clients_{}_rounds_log_{}_noniid.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)    
 
     logger = open(fname, 'w')
 
@@ -161,7 +161,7 @@ def main(args):
     elif mode == "fed_pa":
         #add hyperparameter
         mcmc_hyperparams['rho'] = 1.0
-        mcmc_hyperparams['global_lr'] = 1.0
+        mcmc_hyperparams['global_lr'] = 1e-1 #1.0
 
         #change number of cycles to 1, since we do multiple rounds
         mcmc_hyperparams['M'] = 1
