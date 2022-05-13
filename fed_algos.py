@@ -17,6 +17,7 @@ class FedAvg:
         self.datasize = hyperparams['datasize']
         self.optim_type = hyperparams['optim_type']
         self.outdim = hyperparams['outdim']
+        self.device = hyperparams['device']
 
         self.logger = logger
 
@@ -70,7 +71,7 @@ class FedAvg:
         self.client_nets[client_num], loss = train_nets.sgd_train_step(net = self.client_nets[client_num],
                                  optimizer=self.optimizers[client_num],
                                  criterion = self.criterion,
-                                 trainloader=c_dataloader)
+                                 trainloader=c_dataloader, device = self.device)
 
         print("Client {}, Loss: {}".format(client_num, loss))
 
@@ -145,6 +146,8 @@ class EP_MCMC:
                 hyperparams, device, logger, non_iid = 0.0, task = "classify"):
         self.logger = logger
         self.all_data = traindata
+
+        self.device = device
 
         self.num_clients = num_clients
 
@@ -325,6 +328,8 @@ class F_MCMC(EP_MCMC):
         correct = 0
 
         for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
             pred = self.predict(x)
 
             _, pred_class = torch.max(pred, 1)    
@@ -341,6 +346,9 @@ class F_MCMC(EP_MCMC):
         criterion = torch.nn.MSELoss()
 
         for batch_idx,(x,y) in  enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            
             pred = self.predict(x)
            
             pred = pred.reshape(y.shape)
@@ -488,6 +496,7 @@ class FedPA(EP_MCMC):
             self.client_train[c].net.load_state_dict(self.global_train.net.state_dict())
     
     def get_acc(self, net, valloader):
+        print("Task ", self.task)
         if self.task == "classify":
             return utils.classify_acc(net, valloader)
         else:

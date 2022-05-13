@@ -104,8 +104,10 @@ def main(args):
     if args.net_type == "fc":
         #set up network
         base_net = models.LinearNet(inp_dim=inp_dim, num_hidden = 100, out_dim=out_dim)
+        base_net = base_net.to(device)
     elif args.net_type == "cnn":
         base_net = models.CNN(num_classes=out_dim)
+        base_net = base_net.to(device)
 
     ###################################
     # Hyperparams
@@ -144,7 +146,8 @@ def main(args):
         
         acc = utils.classify_acc(base_net, valloader)
     elif mode == "fed_sgd":
-       
+        sgd_hyperparams['device'] = device
+        
         fed_avg_trainer = fed_algos.FedAvg(num_clients = args.num_clients, 
                                         base_net = base_net, 
                                         traindata = train_data, 

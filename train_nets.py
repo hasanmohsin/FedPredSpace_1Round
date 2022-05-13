@@ -2,10 +2,12 @@ import torch
 import numpy as np
 import copy
 
-def sgd_train_step(net, optimizer, criterion, trainloader):
+def sgd_train_step(net, optimizer, criterion, trainloader, device):
     epoch_loss = 0.0
     count = 0
     for x, y in trainloader:
+        x = x.to(device)
+        y = y.to(device)
         
         optimizer.zero_grad()
         pred_logits = net(x)
@@ -178,6 +180,9 @@ class cSGHMC:
         total_loss  = 0.0
 
         for batch_idx, (x, y) in enumerate(testloader):
+            x  = x.to(self.device)
+            y = y.to(self.device)
+
             pred_list = self.ensemble_inf(x, out_probs = True)
 
             #average to get p(y | x, D)
