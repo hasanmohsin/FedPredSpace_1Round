@@ -2,6 +2,8 @@ import os
 import torch
 import numpy as np
 
+device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
+
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -18,6 +20,9 @@ def classify_acc(net, dataloader):
     net = net.eval()
  
     for x,y in dataloader:
+        x = x.to(device)
+        y= y.to(device)
+
         pred_logit = net(x)
         _, pred = torch.max(pred_logit, 1)    
 
@@ -39,6 +44,9 @@ def regr_acc(net, dataloader):
     total = 0.0
 
     for x,y in dataloader:
+        x = x.to(device)
+        y= y.to(device)
+
         pred = net(x)
         
         loss = criterion(pred, y)
