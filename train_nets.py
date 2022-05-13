@@ -41,7 +41,7 @@ def sgd_train(net, lr, num_epochs, trainloader):
 class cSGHMC:
     def __init__(self,
                   base_net, 
-                  trainloader, device, task):
+                  trainloader, device, task, hyperparams):
         self.net = base_net
         self.trainloader = trainloader
         self.device = device
@@ -50,15 +50,18 @@ class cSGHMC:
         self.task = task
 
         #hard-coded params
-        self.num_epochs = 24
-        self.weight_decay = 5e-4
-        self.datasize = 60000
-        self.batch_size = 100
+        self.num_epochs = hyperparams['epoch_per_client'] #24
+        self.weight_decay = hyperparams['weight_decay'] #5e-4
+        self.datasize = hyperparams['datasize'] #60000
+        self.batch_size = hyperparams['batch_size'] #100
         self.num_batch = self.datasize/self.batch_size + 1
-        self.init_lr = 0.1 #0.5
-        self.M = 4 #num_cycles
-        self.cycle_len = 6#(self.num_epochs/self.M)
+        self.init_lr = hyperparams['init_lr'] #0.1 #0.5
+        self.M = hyperparams['M'] #4 #num_cycles
+        self.cycle_len = (self.num_epochs/self.M) #6
         self.T = self.num_epochs*self.num_batch
+
+        self.sample_per_cycle = hyperparams['sample_per_cycle']
+        self.burn_in_iter = self.cycle_len - self.sample_per_cycle #4
 
         if self.task == "classify":
             self.criterion = torch.nn.CrossEntropyLoss()
@@ -66,9 +69,9 @@ class cSGHMC:
             self.criterion = torch.nn.MSELoss()
         
         self.temperature = 1/self.datasize
-        self.alpha = 0.9
+        self.alpha = hyperparams['alpha'] #0.9
 
-        self.max_samples = 4#15
+        self.max_samples = hyperparams['max_samples'] #15 #4#15
         self.sampled_nets = []
 
     #gradient rule for SG Hamiltonian Monte Carlo
@@ -79,7 +82,7 @@ class cSGHMC:
             d_p = p.grad.data
             d_p.add_(self.weight_decay, p.data)
             buf_new = (1-self.alpha)*p.buf - lr*d_p
-            if (epoch%self.cycle_len)+1>4:
+            if (epoch%self.cycle_len)+1>self.burn_in_iter:
                 eps = torch.randn(p.size()).to(self.device)
                 buf_new += (2.0*lr*self.alpha*self.temperature/self.datasize)**.5*eps
             p.data.add_(buf_new)
@@ -150,7 +153,14 @@ class cSGHMC:
                 break
             self.net.load_state_dict(weight_dict)
             self.net.eval()
-            out[idx] = self.net(x)
+
+            out_x = self.net(x)
+            
+            #reshape to [B, 1]
+            if self.net.out_dim == 1:
+                out_x = out_x.unsqueeze(-1)
+
+            out[idx] = out_x
 
             if out_probs:
                 out[idx] = torch.nn.functional.softmax(out[idx], dim = 1)
@@ -180,6 +190,7 @@ class cSGHMC:
                 total += y.size(0)
                 correct += (pred_class == y).sum().item()
             else:
+                pred = pred.reshape(y.shape)
                 loss = criterion(pred, y)
                 total_loss += loss.item()
 
@@ -191,67 +202,14 @@ class cSGHMC:
             print("MSE on test set: ", total_loss)
             return total_loss
 
-    def train(self, num_epochs = 24):
+    def train(self):
 
-        for epoch in range(num_epochs):
+        for epoch in range(self.num_epochs):
             self.train_epoch(epoch)
 
             # 3 models sampled every 8 epochs
-            if (epoch%self.cycle_len)+1 > 4:
+            if (epoch%self.cycle_len)+1 > self.burn_in_iter:
                 self.sample_net()
         
         return 
 #####################################################
-
-def sgld_train(net, lr, num_epochs, trainloader):
-    ###################
-    # params
-    alpha = 5e-2
-    beta = 1e-1
-    max_nsamples = 50
-    burnin_epochs = 5
-    sample_gap = 2 # sample model every 2 epochs
-
-    ###################
-
-    #collect sample nets
-    sample_nets = []
-    nsamples = 0
-
-    optimizer = torch.optim.SGD(net.parameters(), lr = lr)
-    
-    net = net.train()
-
-    criterion = torch.nn.CrossEntropyLoss()
-
-    for i in range(num_epochs):
-        epoch_loss = 0.0
-        count = 0
-        for x, y in trainloader:
-            
-            optimizer.zero_grad()
-            pred_logits = net(x)
-            loss = criterion(pred_logits, y)
-            loss.backward()
-            optimizer.step()
-
-            epoch_loss += loss.item()
-
-            count+=1
-        if i % sample_gap == 0 and i > burnin_epochs:
-            if len(sample_nets) < max_nsamples:
-                sample_nets.append()
-                nsamples += 1 
-            else:
-                sample_nets[nsamples]
-        
-        
-        print("Epoch: ", i+1, "Loss: ", epoch_loss)
-    print("Training Done!")
-
-    return nets
-
-#######################################
-# Fed AVG
-#######################################
-

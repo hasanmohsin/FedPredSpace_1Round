@@ -11,7 +11,8 @@ import tensorflow as tf
 # labels for each client, 0 means iid
 # outdim is the number of possible classes corresponding to the dataset
 def non_iid_split(dataset, num_clients, client_data_size, batch_size, shuffle, shuffle_digits=True,
-                        noniidpercent=100, outdim=10):
+                        non_iid_frac=1.0, outdim=10):
+    noniidpercent = non_iid_frac*100
     digits = torch.arange(outdim) if shuffle_digits == False else torch.randperm(10,
                                                                                  generator=torch.Generator().manual_seed(
                                                                                      0))
@@ -77,7 +78,7 @@ def iid_split(data, num_clients, batch_size):
 # Real Estate dataset
 # 289 training points
 # 125 validation points
-def get_realestate(normalize = True, batch_size = 1):
+def get_realestate(batch_size, normalize = True):
     col1=['No','X1 transaction date','X2 house age','X3 distance to the nearest MRT station','X4 number of convenience stores',\
       'X5 latitude','X6 longitude', 'Y house price of unit area']
 
@@ -115,7 +116,7 @@ def get_realestate(normalize = True, batch_size = 1):
 ## Forest Fire dataset
 # 361 training points
 # 156 validation points
-def get_forestfire(normalize = True, batch_size = 1):
+def get_forestfire(batch_size, normalize = True):
     col1=['X','Y','month','day','FFMC','DMC','DC',
      'ISI','temp','RH','wind','rain','area']
 
@@ -156,7 +157,7 @@ def get_forestfire(normalize = True, batch_size = 1):
 ## Wine Quality dataset
 # 1119 training points
 # 480 validation points
-def get_winequality(normalize = True, batch_size = 1):
+def get_winequality(batch_size, normalize = True):
     col1=['fixed acidity','volatile acidity','citric acid','residual sugar','chlorides',\
       'free sulfur dioxide','total sulfur dioxide', 'density','pH','sulphates', \
       'alcohol', 'quality']
@@ -201,9 +202,9 @@ def airquality_noniid_split(numclient, df):
     return loc
 
 ## Air quality dataset
-# 6549 training points
-# 2808 validation points
-def get_airquality(normalize = True, batch_size = 1):
+# 7485 training points
+# 1872 validation points
+def get_airquality(batch_size, normalize = True):
     col1=['DATE','TIME','CO_GT','PT08_S1_CO','NMHC_GT','C6H6_GT','PT08_S2_NMHC',
      'NOX_GT','PT08_S3_NOX','NO2_GT','PT08_S4_NO2','PT08_S5_O3','T','RH','AH']
 
@@ -221,7 +222,7 @@ def get_airquality(normalize = True, batch_size = 1):
     data=df1[col1]
     target = data.pop('CO_GT')
 
-    train_size = int(len(data.values) * 0.7)
+    train_size = int(len(data.values) * 0.8)
 
     train_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:train_size, :]).float(), torch.Tensor(target.values[:train_size]).float())
     test_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[train_size:, :]).float(), torch.Tensor(target.values[train_size:]).float())
@@ -238,9 +239,9 @@ def get_airquality(normalize = True, batch_size = 1):
 
 
 ## Bike Sharing dataset
-# 511 training points
-# 220 validation points
-def get_bike(normalize = True, batch_size = 1):
+# 584 training points
+# 147 validation points
+def get_bike(batch_size, normalize = True):
     col1=['instant','dteday','season','yr','mnth','holiday','weekday',
      'workingday','weathersit','temp','atemp','hum','windspeed','casual','registered', 'cnt']
     df1 = pd.read_csv('Dataset/bike.csv',header=None,skiprows=1, na_filter=True,names=col1)
@@ -253,7 +254,7 @@ def get_bike(normalize = True, batch_size = 1):
     data=df1[col1]
     target = data.pop('cnt')
 
-    train_size = int(len(data.values) * 0.7)
+    train_size = int(len(data.values) * 0.8)
 
     train_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:train_size, :]).float(), torch.Tensor(target.values[:train_size]).float())
     test_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[train_size:, :]).float(), torch.Tensor(target.values[train_size:]).float())
@@ -477,12 +478,12 @@ def get_cifar100(use_cuda, batch_size, get_datamat = False):
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
     ])
     
     transform_val = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
     ])
 
     #50,000 datapoints,

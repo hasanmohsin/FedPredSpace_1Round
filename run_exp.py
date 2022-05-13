@@ -16,8 +16,19 @@ import fed_algos
 
 def main(args):
 
+    utils.makedirs(args.save_dir)
+
+    if args.mode == "fed_sgd":
+        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type)    
+    else:
+         fname = "{}/{}_{}_{}_clients_{}_rounds_log.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds)    
+
+    logger = open(fname, 'w')
+
+    utils.print_and_log("Experiment: Args {}".format(args), logger)
+
     ####################     
-    lr = args.lr #1e-3
+    #lr = args.lr #1e-3
     #batch_size = 100
     #num_epochs = 24
     
@@ -43,41 +54,93 @@ def main(args):
 
     #MNIST default
     inp_dim = 28*28
-    
+
     if args.dataset == "mnist":
         trainloader, valloader, train_data  = datasets.get_mnist(use_cuda, args.batch_size, get_datamat=True)
+        inp_dim = 28*28
     elif args.dataset == "cifar10":
         trainloader, valloader, train_data  = datasets.get_cifar10(use_cuda, args.batch_size, get_datamat=True)
+        inp_dim = 32*32*3
     elif args.dataset == "cifar100":
         trainloader, valloader, train_data  = datasets.get_cifar100(use_cuda, args.batch_size, get_datamat=True)
+        inp_dim = 32*32*3
     elif args.dataset == "emnist":
         trainloader, valloader, train_data  = datasets.get_emnist(use_cuda, args.batch_size, get_datamat=True)
+        inp_dim = 28*28
     elif args.dataset == "f_mnist":
         trainloader, valloader, train_data  = datasets.get_fashion_mnist(use_cuda, args.batch_size, get_datamat=True)
-    
+        inp_dim = 28*28
+
     #regression datasets
     elif args.dataset == "bike":
         task = "regression"
-        trainloader, valloader, train_data = datasets.get_bike(batch_size = args.batch_size)
+        trainloader, valloader, train_data, df = datasets.get_bike(batch_size = args.batch_size)
         out_dim = 1
         inp_dim = len(train_data[0][0])
     elif args.dataset == "airquality":
         task = "regression"
-        trainloader, valloader, train_data = datasets.get_airquality(batch_size=args.batch_size)
+        trainloader, valloader, train_data, df = datasets.get_airquality(batch_size=args.batch_size)
+        out_dim = 1
+        inp_dim = len(train_data[0][0])
+    elif args.dataset == "forest_fire":
+        task = "regression"
+        trainloader, valloader, train_data, df = datasets.get_forestfire(batch_size=args.batch_size)
+        out_dim = 1
+        inp_dim = len(train_data[0][0])
+    elif args.dataset == "real_estate":
+        task = "regression"
+        trainloader, valloader, train_data, df = datasets.get_realestate(batch_size=args.batch_size)
+        out_dim = 1
+        inp_dim = len(train_data[0][0])    
+    elif args.dataset == "winequality":
+        task = "regression"
+        trainloader, valloader, train_data, df = datasets.get_winequality(batch_size=args.batch_size)
         out_dim = 1
         inp_dim = len(train_data[0][0])
 
     if task == "classify":
         out_dim = len(train_data.classes)
-    #set up network
-    base_net = models.LinearNet(inp_dim=inp_dim, num_hidden = 100, out_dim=out_dim)
+    
+    if args.net_type == "fc":
+        #set up network
+        base_net = models.LinearNet(inp_dim=inp_dim, num_hidden = 100, out_dim=out_dim)
+    elif args.net_type == "cnn":
+        base_net = models.CNN(num_classes=out_dim)
+
+    ###################################
+    # Hyperparams
+    ###################################
+    #for sgd technique (per client)
+    sgd_hyperparams = { 'epoch_per_client': args.epoch_per_client,
+                        'lr': args.lr,
+                        'batch_size': args.batch_size,
+                        'optim_type': args.optim_type,
+                        'datasize': len(train_data),
+                        'outdim': out_dim
+    }
+
+    #for mcmc techniques (per client)
+    #num_mcmc_epochs = args.num_rounds * args.num_epochs_per_client
+
+    mcmc_hyperparams = {'epoch_per_client': args.epoch_per_client,
+                    'weight_decay': 5e-4,
+                    'datasize': len(train_data),
+                    'batch_size': args.batch_size, #100
+                    'init_lr': args.lr, #0.1, #0.5
+                    'M': 5, #4, # num_cycles 
+                    'sample_per_cycle': 2,
+                    'alpha': 0.9,
+                    'max_samples': 15,
+                    'outdim': out_dim
+    }
+
 
     ################################
     # TRAINING ALGORITHMS
     ################################
     if mode == "sgd":
         
-        base_net = train_nets.sgd_train(base_net, lr, args.num_epochs_per_client*args.num_rounds, trainloader)
+        base_net = train_nets.sgd_train(base_net, args.lr, args.epoch_per_client*args.num_rounds, trainloader)
         
         acc = utils.classify_acc(base_net, valloader)
     elif mode == "fed_sgd":
@@ -86,20 +149,25 @@ def main(args):
                                         base_net = base_net, 
                                         traindata = train_data, 
                                         num_rounds = args.num_rounds, 
-                                        epoch_per_client = args.num_epochs_per_client,
-                                        batch_size = args.batch_size, 
+                                        hyperparams = sgd_hyperparams, 
+                                        logger = logger,
                                         non_iid = args.non_iid,
                                         task = task)
         fed_avg_trainer.train(valloader)
-        acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+        #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
     elif mode == "fed_pa":
+        #add hyperparameter
+        mcmc_hyperparams['rho'] = 1.0
+        mcmc_hyperparams['global_lr'] = 1.0
+
+        #change number of cycles to 1, since we do multiple rounds
+        mcmc_hyperparams['M'] = 1
 
         fed_pa = fed_algos.FedPA(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data,
                                     num_rounds = 4,#1,
-                                    epoch_per_client = 6,
-                                    batch_size = args.batch_size, device=device,
+                                    hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)
         fed_pa.train(valloader=valloader)
@@ -108,19 +176,18 @@ def main(args):
                                     base_net = base_net,
                                     traindata=train_data,
                                     num_rounds = 1,
-                                    epoch_per_client = 24,
-                                    batch_size = args.batch_size, device=device,
+                                    hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)
         ep_mcmc.train(valloader=valloader)
     
     elif mode == "f_mcmc":
+
         f_mcmc = fed_algos.F_MCMC(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data,
                                     num_rounds = 1,
-                                    epoch_per_client = 24,
-                                    batch_size = args.batch_size, device=device,
+                                    hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)
         f_mcmc.train(valloader=valloader)
@@ -138,24 +205,28 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, default=12)
     
-    parser.add_argument('--dataset', type= str, default = "MNIST")
-    parser.add_argument('--non_iid', action="store_true") 
+    parser.add_argument('--dataset', type= str, default = "mnist")
+    parser.add_argument('--non_iid', type = float, default = 0.0) # percent of non-iid #action="store_true") 
 
     parser.add_argument('--mode', type=str, default = "fed_sgd")
+
+    parser.add_argument('--net_type', type=str, default="fc")
 
     #dataset stuff
     parser.add_argument('--batch_size', type=int, default = 100)
 
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--weight_decay', type=float, default = 5e-4)
+    parser.add_argument('--optim_type', type= str, default="sgdm")
 
     #for federated learning
     parser.add_argument('--num_rounds', type=int, default = 6)
-    parser.add_argument('--num_epochs_per_client', type=int, default = 4)
+    parser.add_argument('--epoch_per_client', type=int, default = 4)
 
     parser.add_argument('--num_clients', type = int, default = 5)
 
 
-    parser.add_argument('--save_dir', type=str, default = "./plots/")
+    parser.add_argument('--save_dir', type=str, default = "./results/")
 
     #for later - setting up train/test split
     #parser.add_argument('--ntrain', type=int, default=500)

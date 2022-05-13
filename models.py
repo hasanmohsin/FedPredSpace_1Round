@@ -19,23 +19,28 @@ class LinearNet(nn.Module):
         x = x.view(-1, self.input_dim)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.fc3(x).squeeze()
         return x
 
+#for CIFAR10, and CIFAR100
 class CNN(nn.Module):
-    def __init__(self, in_channels = 1, num_classes = 10):
+    def __init__(self, num_classes = 10):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, 16, 5, stride = 1, padding = 2)
-        self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(16, 32, 5, 1, 2)
-        self.fc1 = nn.Linear(32 * 7 * 7, 60)
-        self.fc2 = nn.Linear(60, num_classes)
+        self.out_dim = num_classes
+
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x #logits for classification
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 

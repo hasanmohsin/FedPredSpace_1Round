@@ -8,40 +8,52 @@ import utils
 class FedAvg:
     def __init__(self, num_clients, base_net, 
                 traindata, 
-                num_rounds, epoch_per_client,
-                batch_size, non_iid = False, task = "classify"):
+                num_rounds, hyperparams, logger, non_iid = 0.0, task = "classify"):
 
         # lr for SGD
-        lr = 0.01
+        self.lr = hyperparams['lr']
+        self.batch_size = hyperparams['batch_size']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.datasize = hyperparams['datasize']
+        self.optim_type = hyperparams['optim_type']
+        self.outdim = hyperparams['outdim']
 
-        #lr for ADAM
-        #lr = 1e-3
+        self.logger = logger
 
         self.all_data = traindata
 
         self.num_clients = num_clients
 
+        self.task = task
+
         #initialize nets and data for all clients
         self.client_nets = []
         self.optimizers = []
 
-        if non_iid:
-            self.client_dataloaders, self.client_datasize = datasets.non_iid_mnist_split(dataset = traindata, 
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset = traindata, 
                                                                                         num_clients = num_clients, 
-                                                                                        client_data_size = (60000//num_clients), 
-                                                                                        batch_size = batch_size, 
-                                                                                        shuffle=False)
+                                                                                        client_data_size = (self.datasize//num_clients), 
+                                                                                        batch_size = self.batch_size, 
+                                                                                        shuffle=False, non_iid_frac = non_iid,
+                                                                                        outdim=self.outdim)
         else:
-            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, batch_size)
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
 
         for c in range(num_clients):
             self.client_nets.append(copy.deepcopy(base_net))
             
-            self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = lr, momentum=0.9))
-            #self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr = lr))
+            if self.optim_type == "sgdm":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr, momentum=0.9))
+            elif self.optim_type == "sgd":
+                 self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr))
+            elif self.optim_type == "adam":
+                self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr = self.lr))
+            else:
+                utils.print_and_log("Optimizer type {} unkown, defualting to vanilla SGD")
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr))
 
         self.num_rounds = num_rounds
-        self.epoch_per_client = epoch_per_client
 
         if task == "classify":
             self.criterion = torch.nn.CrossEntropyLoss()
@@ -112,42 +124,53 @@ class FedAvg:
         for c in range(self.num_clients):
             self.client_nets[c].load_state_dict(self.global_net.state_dict())
 
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
     def train(self, valloader):
         for i in range(self.num_rounds):
             self.global_update_step()
             self.global_to_clients()
-            acc = utils.classify_acc(self.global_net, valloader)
-            print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+            acc = self.get_acc(self.global_net, valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
         return
 
 class EP_MCMC:
     def __init__(self, num_clients, base_net, 
                 traindata, 
-                num_rounds, epoch_per_client,
-                batch_size, device, non_iid = False, task = "classify"):
-        
+                num_rounds, 
+                hyperparams, device, logger, non_iid = 0.0, task = "classify"):
+        self.logger = logger
         self.all_data = traindata
 
         self.num_clients = num_clients
 
+        self.datasize = hyperparams['datasize']
+        self.batch_size = hyperparams['batch_size']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.outdim = hyperparams['outdim']
+
         #initialize nets and data for all clients
         self.client_train = []
-        if non_iid:
-            self.client_dataloaders, self.client_datasize = datasets.non_iid_mnist_split(dataset = traindata, 
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset = traindata, 
                                                                                         num_clients = num_clients, 
-                                                                                        client_data_size = (60000//num_clients), 
-                                                                                        batch_size = batch_size, 
-                                                                                        shuffle=False)
+                                                                                        client_data_size = (self.datasize//num_clients), 
+                                                                                        batch_size = self.batch_size, 
+                                                                                        shuffle=False, non_iid_frac = non_iid,
+                                                                                        outdim = self.outdim)
         else:
-            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, batch_size)
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
     
         for c in range(num_clients):
             self.client_train.append(train_nets.cSGHMC(copy.deepcopy(base_net), 
                                                         trainloader=self.client_dataloaders[c],
-                                                        device = device, task = task))
+                                                        device = device, task = task, hyperparams=hyperparams))
 
         self.num_rounds = num_rounds
-        self.epoch_per_client = epoch_per_client
 
         self.task = task
 
@@ -158,12 +181,13 @@ class EP_MCMC:
         
         self.global_train = train_nets.cSGHMC(copy.deepcopy(base_net), 
                                             trainloader =None,
-                                            device = device, task = task)#copy.deepcopy(base_net)
+                                            device = device, task = task, hyperparams=hyperparams)#copy.deepcopy(base_net)
         self.base_net = base_net
         self.num_g_samples = 10
 
     def local_train(self, client_num):
-        self.client_train[client_num].train(self.epoch_per_client)
+        #trains for above specified epochs per client 
+        self.client_train[client_num].train()
 
     def get_client_samples_as_vec(self, client_num):
         client_samples = self.client_train[client_num].sampled_nets
@@ -235,11 +259,11 @@ class EP_MCMC:
         for i in range(self.num_rounds):
             self.global_update_step()
             acc = self.global_train.test_acc(valloader)
-            print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
-                print("Client {}, test accuracy: {}".format(c, acc_c))
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
         return
 
 #ours
@@ -247,12 +271,11 @@ class EP_MCMC:
 class F_MCMC(EP_MCMC):
     def __init__(self, num_clients, base_net, 
                 traindata, 
-                num_rounds, epoch_per_client,
-                batch_size, device, non_iid = False, task = "classify"):
+                num_rounds, hyperparams, 
+                device, logger, non_iid = False, task = "classify"):
         EP_MCMC.__init__(self, num_clients, base_net, 
                 traindata, 
-                num_rounds, epoch_per_client,
-                batch_size, device, non_iid, task)
+                num_rounds, hyperparams, device, logger, non_iid, task)
 
     #do nothing in aggregate function
     def aggregate(self):
@@ -319,6 +342,8 @@ class F_MCMC(EP_MCMC):
 
         for batch_idx,(x,y) in  enumerate(testloader):
             pred = self.predict(x)
+           
+            pred = pred.reshape(y.shape)
             total_loss += criterion(pred, y).item()
 
         print("MSE on test set: ", total_loss)
@@ -335,28 +360,28 @@ class F_MCMC(EP_MCMC):
         for i in range(self.num_rounds):
             self.global_update_step()
             acc = self.test_acc(valloader)
-            print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
-                print("Client {}, test accuracy: {}".format(c, acc_c))
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
         return
 
 #Federated posterior averaging
 class FedPA(EP_MCMC):
     def __init__(self, num_clients, base_net, 
                 traindata, 
-                num_rounds, epoch_per_client,
-                batch_size, device, rho = 1.0, non_iid = False, task = "classify"):
+                num_rounds, 
+                hyperparams, device, logger, non_iid = False, task = "classify"):
         EP_MCMC.__init__(self, num_clients, base_net, 
                 traindata, 
-                num_rounds, epoch_per_client,
-                batch_size, device, non_iid, task)
+                num_rounds, hyperparams,
+                 device, logger, non_iid, task)
 
-        self.rho = rho
-        lr = 1.0 # global learning rate should likely be higher
+        self.rho = hyperparams['rho'] # 1.0
+        self.global_lr = hyperparams['global_lr'] # global learning rate should likely be higher
         self.global_train.net.requires_grad = True
-        self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = 0.1, momentum=0.9)
+        self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
 
     def get_global_vec(self):
         #sample_net = copy.deepcopy(self.base_net)
@@ -462,19 +487,26 @@ class FedPA(EP_MCMC):
         for c in range(self.num_clients):
             self.client_train[c].net.load_state_dict(self.global_train.net.state_dict())
     
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
+
     def train(self, valloader):
-        acc = utils.classify_acc(self.global_train.net, valloader)
+        acc = self.get_acc(self.global_train.net, valloader)
         
         for i in range(self.num_rounds):
             self.global_update_step()
             self.global_to_clients()
-            acc = utils.classify_acc(self.global_train.net, valloader) #self.global_train.test_acc(valloader)
-            print("Global rounds completed: {}, test_acc: {}".format(i, acc))
+            acc = self.get_acc(self.global_train.net, valloader) #self.global_train.test_acc(valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
         #for reference, check client accuracies
         for c in range(self.num_clients):
             acc_c = self.client_train[c].test_acc(valloader)
-            print("Client {}, test accuracy: {}".format(c, acc_c))
+            utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
         return
 
 

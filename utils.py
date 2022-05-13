@@ -1,4 +1,4 @@
-
+import os 
 import torch
 import numpy as np
 
@@ -29,7 +29,7 @@ def classify_acc(net, dataloader):
     return acc
 
 # compute MSE loss for a regression task
-def classify_acc(net, dataloader):
+def regr_acc(net, dataloader):
     # test eval
 
     #eval mode
@@ -41,7 +41,15 @@ def classify_acc(net, dataloader):
     for x,y in dataloader:
         pred = net(x)
         
-        loss = criterion(y, pred)
+        loss = criterion(pred, y)
         total += loss.item()
     print("MSE on test set: ", total)
     return total
+
+def makedirs(dirname):
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+def print_and_log(s, logger):
+    print(s)
+    logger.write(str(s) + '\n')
