@@ -23,7 +23,7 @@ class LinearNet(nn.Module):
         return x
 
 class CNN(nn.Module):
-    def __init__(self):
+    def __init__(self, num_classes = 10):
         super(CNN, self).__init__()
         self.conv1 = nn.Conv2d(3,   64,  3)
         self.conv2 = nn.Conv2d(64,  128, 3)
@@ -31,7 +31,7 @@ class CNN(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.fc1 = nn.Linear(64 * 4 * 4, 128)
         self.fc2 = nn.Linear(128, 256)
-        self.fc3 = nn.Linear(256, 10)
+        self.fc3 = nn.Linear(256, num_classes)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
