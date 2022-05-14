@@ -170,7 +170,7 @@ class EP_MCMC:
     
         for c in range(num_clients):
             hyperparams_c = copy.deepcopy(hyperparams)
-            hyperparams_c['datasize'] = self.client_datasize[c]
+            #hyperparams_c['datasize'] = self.client_datasize[c]
             self.client_train.append(train_nets.cSGHMC(copy.deepcopy(base_net), 
                                                         trainloader=self.client_dataloaders[c],
                                                         device = device, task = task, hyperparams=hyperparams_c))
