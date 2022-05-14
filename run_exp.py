@@ -132,7 +132,7 @@ def main(args):
                     'M': 5, #4, # num_cycles 
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
-                    'max_samples': 15,
+                    'max_samples': 6,#15,
                     'outdim': out_dim
     }
 

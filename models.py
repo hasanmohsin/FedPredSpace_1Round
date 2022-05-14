@@ -25,6 +25,8 @@ class LinearNet(nn.Module):
 class CNN(nn.Module):
     def __init__(self, num_classes = 10):
         super(CNN, self).__init__()
+        self.out_dim = num_classes
+
         self.conv1 = nn.Conv2d(3,   64,  3)
         self.conv2 = nn.Conv2d(64,  128, 3)
         self.conv3 = nn.Conv2d(128, 256, 3)
