@@ -151,7 +151,7 @@ class EP_MCMC:
 
         self.num_clients = num_clients
 
-        self.datasize = hyperparams['datasize']
+        self.datasize = copy.deepcopy(hyperparams['datasize'])
         self.batch_size = hyperparams['batch_size']
         self.epoch_per_client = hyperparams['epoch_per_client']
         self.outdim = hyperparams['outdim']
@@ -169,9 +169,11 @@ class EP_MCMC:
             self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
     
         for c in range(num_clients):
+            hyperparams_c = copy.deepcopy(hyperparams)
+            hyperparams_c['datasize'] = self.client_datasize[c]
             self.client_train.append(train_nets.cSGHMC(copy.deepcopy(base_net), 
                                                         trainloader=self.client_dataloaders[c],
-                                                        device = device, task = task, hyperparams=hyperparams))
+                                                        device = device, task = task, hyperparams=hyperparams_c))
 
         self.num_rounds = num_rounds
 

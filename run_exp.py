@@ -132,7 +132,7 @@ def main(args):
                     'M': 5, #4, # num_cycles 
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
-                    'max_samples': 6,#15,
+                    'max_samples': 15,
                     'outdim': out_dim
     }
 
@@ -163,13 +163,14 @@ def main(args):
         mcmc_hyperparams['rho'] = 1.0
         mcmc_hyperparams['global_lr'] = 1e-1 #1.0
 
-        #change number of cycles to 1, since we do multiple rounds
-        mcmc_hyperparams['M'] = 1
+        if args.num_rounds > 1:
+            #change number of cycles to 1, since we do multiple rounds
+            mcmc_hyperparams['M'] = 1
 
         fed_pa = fed_algos.FedPA(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data,
-                                    num_rounds = 4,#1,
+                                    num_rounds = args.num_rounds, #4,#1,
                                     hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)

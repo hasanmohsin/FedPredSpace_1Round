@@ -56,7 +56,7 @@ class cSGHMC:
         self.weight_decay = hyperparams['weight_decay'] #5e-4
         self.datasize = hyperparams['datasize'] #60000
         self.batch_size = hyperparams['batch_size'] #100
-        self.num_batch = self.datasize/self.batch_size + 1
+        self.num_batch = int(self.datasize/self.batch_size) + 1
         self.init_lr = hyperparams['init_lr'] #0.1 #0.5
         self.M = hyperparams['M'] #4 #num_cycles
         self.cycle_len = (self.num_epochs/self.M) #6
