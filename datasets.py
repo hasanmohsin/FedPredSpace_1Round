@@ -13,7 +13,7 @@ import tensorflow as tf
 def non_iid_split(dataset, num_clients, client_data_size, batch_size, shuffle, shuffle_digits=True,
                         non_iid_frac=1.0, outdim=10):
     noniidpercent = non_iid_frac*100
-    digits = torch.arange(outdim) if shuffle_digits == False else torch.randperm(10,
+    digits = torch.arange(outdim) if shuffle_digits == False else torch.randperm(outdim,
                                                                                  generator=torch.Generator().manual_seed(
                                                                                      0))
 
