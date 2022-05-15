@@ -12,6 +12,7 @@ class FedAvg:
 
         # lr for SGD
         self.lr = hyperparams['lr']
+        self.g_lr = hyperparams['g_lr']
         self.batch_size = hyperparams['batch_size']
         self.epoch_per_client = hyperparams['epoch_per_client']
         self.datasize = hyperparams['datasize']

@@ -115,6 +115,7 @@ def main(args):
     #for sgd technique (per client)
     sgd_hyperparams = { 'epoch_per_client': args.epoch_per_client,
                         'lr': args.lr,
+                        'g_lr': args.g_lr,
                         'batch_size': args.batch_size,
                         'optim_type': args.optim_type,
                         'datasize': len(train_data),
@@ -132,7 +133,7 @@ def main(args):
                     'M': 5, #4, # num_cycles 
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
-                    'max_samples': 6,#15,
+                    'max_samples': 12,
                     'outdim': out_dim
     }
 
@@ -160,8 +161,8 @@ def main(args):
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
     elif mode == "fed_pa":
         #add hyperparameter
-        mcmc_hyperparams['rho'] = 1.0
-        mcmc_hyperparams['global_lr'] = 1e-1 #1.0
+        mcmc_hyperparams['rho'] = args.rho #1.0
+        mcmc_hyperparams['global_lr'] = args.g_lr #1e-1 #1.0
 
         if args.num_rounds > 1:
             #change number of cycles to 1, since we do multiple rounds
@@ -215,6 +216,9 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default = "fed_sgd")
 
     parser.add_argument('--net_type', type=str, default="fc")
+
+    parser.add_argument('--g_lr', type= float, default = 1e-1)
+    parser.add_argument('--rho', type=float, default= 1.0)
 
     #dataset stuff
     parser.add_argument('--batch_size', type=int, default = 100)
