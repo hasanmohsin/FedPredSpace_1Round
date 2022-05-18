@@ -74,6 +74,18 @@ def iid_split(data, num_clients, batch_size):
     #array of datasets
     return c_dataloaders, lens
 
+def realestate_noniid_split(numclient, df):
+    client_size = len(df) // numclient
+    lens = numclient * [client_size]
+    loc = []
+    df = df.sort_values(by=['X4 number of convenience stores'])
+    for i in range(numclient):
+        data = df[:client_size * (i + 1)]
+        target = data.pop('Y house price of unit area')
+        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:, :]).float(),
+                                            torch.Tensor(target.values[:]).float())
+        loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
+    return loc, lens
 
 # Real Estate dataset
 # 289 training points
@@ -112,6 +124,19 @@ def get_realestate(batch_size, normalize = True):
     )
     return trainloader, testloader, train_ds, df1
 
+
+def forestfire_noniid_split(numclient, df):
+    client_size = len(df) // numclient
+    lens = numclient * [client_size]
+    loc = []
+    df = df.sort_values(by=['temp'])
+    for i in range(numclient):
+        data = df[:client_size * (i + 1)]
+        target = data.pop('area')
+        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:, :]).float(),
+                                            torch.Tensor(target.values[:]).float())
+        loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
+    return loc, lens
 
 ## Forest Fire dataset
 # 361 training points
@@ -154,6 +179,22 @@ def get_forestfire(batch_size, normalize = True):
     )
     return trainloader, testloader, train_ds, df1
 
+
+## Does a non iid split on the airquality dataset,
+## Require input df as dataframe type
+def wine_noniid_split(numclient, df):
+    client_size = len(df) // numclient
+    lens = numclient * [client_size]
+    loc = []
+    df = df.sort_values(by=['alcohol'])
+    for i in range(numclient):
+        data = df[:client_size * (i + 1)]
+        target = data.pop('quality')
+        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:, :]).float(),
+                                            torch.Tensor(target.values[:]).float())
+        loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
+    return loc, lens
+client= wine_noniid_split(5, df1)
 ## Wine Quality dataset
 # 1119 training points
 # 480 validation points
@@ -193,13 +234,17 @@ def get_winequality(batch_size, normalize = True):
 ## Does a non iid split on the airquality dataset,
 ## Require input df as dataframe type
 def airquality_noniid_split(numclient, df):
+    client_size = len(df) // numclient
     loc = []
+    lens = numclient * [client_size]
+    df = df.sort_values(by=['NO2_GT'])
     for i in range(numclient):
-        data=df.loc[df['NO2_GT'] >=float(i/numclient)].loc[df['NO2_GT'] <float((i+1)/numclient)]
+        data = df[:client_size * (i + 1)]
         target = data.pop('CO_GT')
-        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values).float(), torch.Tensor(target.values).float())
+        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:, :]).float(),
+                                            torch.Tensor(target.values[:]).float())
         loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
-    return loc
+    return loc, lens
 
 ## Air quality dataset
 # 7485 training points
@@ -237,6 +282,22 @@ def get_airquality(batch_size, normalize = True):
     )
     return trainloader, testloader, train_ds, df1
 
+
+
+## Does a non iid split on the airquality dataset,
+## Require input df as dataframe type
+def bike_noniid_split(numclient, df):
+    client_size = len(df) // numclient
+    loc = []
+    lens = numclient * [client_size]
+    df = df.sort_values(by=['temp'])
+    for i in range(numclient):
+        data = df[:client_size * (i + 1)]
+        target = data.pop('cnt')
+        ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:, :]).float(),
+                                            torch.Tensor(target.values[:]).float())
+        loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
+    return loc, lens
 
 ## Bike Sharing dataset
 # 584 training points
