@@ -194,7 +194,9 @@ def wine_noniid_split(numclient, df):
                                             torch.Tensor(target.values[:]).float())
         loc.append(torch.utils.data.DataLoader(ds, 1, shuffle = True))
     return loc, lens
-client= wine_noniid_split(5, df1)
+
+#client= wine_noniid_split(5, df1)
+
 ## Wine Quality dataset
 # 1119 training points
 # 480 validation points
@@ -399,7 +401,7 @@ def get_emnist(use_cuda, batch_size, get_datamat = False):
     #60,000 datapoints, 28x28
     train_data = datasets.EMNIST(
         root = '../Dataset',
-        split = 'letters',
+        split = 'bymerge',
         train =True,
         transform = transform_train,
         download= True
@@ -408,7 +410,7 @@ def get_emnist(use_cuda, batch_size, get_datamat = False):
     #10,000 datapoints
     val_data = datasets.EMNIST(
         root = "../Dataset",
-        split = 'letters',
+        split = 'bymerge',
         train=False,
         download = True,
         transform = transform_val
