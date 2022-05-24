@@ -1,4 +1,4 @@
-# FedFuncSpace_1Round
+# FedPredSpace_1Round
 
 Run code using the command
 
