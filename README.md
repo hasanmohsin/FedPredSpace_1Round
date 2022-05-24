@@ -1,5 +1,7 @@
 # FedPredSpace_1Round
 
+Requirements are included in the requirements.txt file.
+
 Run code using the command
 
 ```
