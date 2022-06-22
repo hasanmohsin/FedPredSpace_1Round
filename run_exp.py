@@ -109,6 +109,7 @@ def main(args):
         base_net = models.CNN(num_classes=out_dim)
         base_net = base_net.to(device)
 
+
     ###################################
     # Hyperparams
     ###################################
@@ -133,7 +134,7 @@ def main(args):
                     'M': 5, #4, # num_cycles 
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
-                    'max_samples': 12,
+                    'max_samples': 6,
                     'outdim': out_dim
     }
 
@@ -191,6 +192,23 @@ def main(args):
         f_mcmc = fed_algos.F_MCMC(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data,
+                                    num_rounds = 1,
+                                    hyperparams = mcmc_hyperparams, device=device, logger = logger,
+                                    non_iid = args.non_iid,
+                                    task = task)
+        f_mcmc.train(valloader=valloader)
+      
+    elif mode == "distill_f_mcmc":
+        
+        #split train data into distill and train
+        len_data = train_data.__len__()
+        len_more_data = int(round(len_data*0.05))
+        lens = [len_data - len_more_data, len_more_data]
+        train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+
+        f_mcmc = fed_algos.F_MCMC_distill(num_clients = args.num_clients,
+                                    base_net = base_net,
+                                    traindata=train_data, distill_data = distill_data,
                                     num_rounds = 1,
                                     hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
