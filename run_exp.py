@@ -202,7 +202,7 @@ def main(args):
         
         #split train data into distill and train
         len_data = train_data.__len__()
-        len_more_data = int(round(len_data*0.05))
+        len_more_data = int(round(len_data*0.2))
         lens = [len_data - len_more_data, len_more_data]
         train_data, distill_data = torch.utils.data.random_split(train_data, lens)
 

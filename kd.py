@@ -16,7 +16,7 @@ class KD:
 
         self.lr = lr
         
-        self.optimizer = torch.optim.Adam(params = student.parameters(), lr = 1e-4)
+        self.optimizer = torch.optim.Adam(params = student.parameters(), lr = 1e-4)#, weight_decay=0.00001)
         #base_opt = torch.optim.SGD(self.student.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.00001)
         #self.optimizer = swa.SWA(base_opt, swa_start=100, swa_freq=10, swa_lr=None)
 
