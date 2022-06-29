@@ -1,9 +1,11 @@
 from pkgutil import get_data
 import torch
 from torchvision import datasets, transforms
+from torch.utils.data import Dataset, DataLoader,TensorDataset
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import json
 
 # do an noniid split of the dataset into num_clients parts
 # each client gets equal sized dataset specified by the client_data_size
@@ -72,6 +74,30 @@ def iid_split(data, num_clients, batch_size):
         c_dataloaders.append(c_dataloader)
 
     #array of datasets
+    return c_dataloaders, lens
+
+# Load the json file generated from the leaf project
+def get_leafdata(filename, batch_size):
+    inputx = []
+    outputy = []
+    data = json.load(open(filename))
+    c_dataloaders = []
+    lens = []
+    for keys in data['user_data']:
+        i = 0
+        cx = []
+        cy = []
+        nsmp = len(data['user_data'][keys]['x'])
+        while i < nsmp:
+            cx = np.asarray(data['user_data'][keys]['x'][i], dtype=np.float32)
+            cy = np.asarray(data['user_data'][keys]['y'][i], dtype=np.float32)
+            inputx.append(cx)
+            outputy.append(cy)
+            i = i + 1
+        torch_ds = TensorDataset(torch.from_numpy(np.array(inputx)).float(), torch.from_numpy(np.array(outputy)).long())
+        torch_loader = DataLoader(torch_ds, batch_size=batch_size)
+        c_dataloaders.append(torch_loader)
+        lens.append(nsmp)
     return c_dataloaders, lens
 
 def realestate_noniid_split(numclient, df):
