@@ -508,6 +508,138 @@ class F_MCMC_distill(EP_MCMC):
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
         return
 
+
+
+#ours
+# same as EP_MCMC, but inference step is different
+class Gen_F_MCMC_distill(EP_MCMC):
+    def __init__(self, num_clients, base_net, 
+                traindata, distill_data,
+                inp_dim,
+                num_rounds, hyperparams, 
+                device, logger, non_iid = False, task = "classify"):
+        EP_MCMC.__init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, hyperparams, device, logger, non_iid, task)
+
+        #make distillation dataset out of distill_data
+        distill_loader = torch.utils.data.DataLoader(distill_data, 
+                                                batch_size=self.batch_size, shuffle=True, 
+                                                pin_memory=True)
+
+        self.student = copy.copy(base_net)
+        self.distill = kd.KD_gen_data(teacher = self, 
+                             student = self.student, lr = 5e-3,
+                             device = self.device,
+                             train_loader = distill_loader,
+                             inp_dim = inp_dim
+                            )
+
+    #do nothing in aggregate function
+    def aggregate(self):
+        #try better student init
+        self.distill.set_student(self.client_train[0].sampled_nets[-1])
+
+        #train the student via kd
+        self.distill.train(num_epochs = 50)
+        self.student = self.distill.student
+
+        return
+    
+    #prediction on input x
+    def predict_classify(self, x):
+        global_pred = 1.0
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+                
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred = torch.mean(pred_list, dim=0, keepdims=False)
+            
+            #assuming a uniform posterior
+            global_pred *= pred
+        return global_pred/torch.sum(global_pred, dim=-1, keepdims=True)
+
+
+    def predict_regr(self,x):
+        global_pred = 0.0
+        var_sum = 0.0
+
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+                
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
+            pred_var = torch.var(pred_list, dim = 0, keepdims = False)
+
+            #assuming a uniform posterior
+            global_pred += pred_mean/pred_var
+            var_sum += 1/pred_var
+        
+        return global_pred/var_sum
+
+
+    def predict(self, x):
+        if self.task == "classify":
+            return self.predict_classify(x)
+        else:
+            return self.predict_regr(x)
+
+    def test_classify(self, testloader):
+        total = 0
+        correct = 0
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = self.predict(x)
+
+            _, pred_class = torch.max(pred, 1)    
+
+            total += y.size(0)
+            correct += (pred_class == y).sum().item()
+
+        acc = 100*correct/total
+        print("Accuracy on test set: ", acc)
+        return acc
+    
+    def test_mse(self, testloader):
+        total_loss = 0.0
+        criterion = torch.nn.MSELoss()
+
+        for batch_idx,(x,y) in  enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            
+            pred = self.predict(x)
+           
+            pred = pred.reshape(y.shape)
+            total_loss += criterion(pred, y).item()
+
+        print("MSE on test set: ", total_loss)
+        return total_loss    
+
+    def test_acc(self, testloader):
+        if self.task == "classify":
+            return self.test_classify(testloader)
+        else:
+            return self.test_mse(testloader)
+
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            self.global_update_step()
+
+            acc = self.distill.test_acc(valloader)
+            #acc = self.test_acc(valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
+
+            for c in range(self.num_clients):
+                acc_c = self.client_train[c].test_acc(valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+        return
+
 #Federated posterior averaging
 class FedPA(EP_MCMC):
     def __init__(self, num_clients, base_net, 
