@@ -138,6 +138,12 @@ def main(args):
                     'outdim': out_dim
     }
 
+    #do this for all datasets for fairness to the distillation algos
+    #split train data into distill and train
+    len_data = train_data.__len__()
+    len_more_data = int(round(len_data*0.2))
+    lens = [len_data - len_more_data, len_more_data]
+    train_data, distill_data = torch.utils.data.random_split(train_data, lens)
 
     ################################
     # TRAINING ALGORITHMS
@@ -215,10 +221,10 @@ def main(args):
     elif mode == "distill_f_mcmc":
         
         #split train data into distill and train
-        len_data = train_data.__len__()
-        len_more_data = int(round(len_data*0.2))
-        lens = [len_data - len_more_data, len_more_data]
-        train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+        #len_data = train_data.__len__()
+        #len_more_data = int(round(len_data*0.2))
+        #lens = [len_data - len_more_data, len_more_data]
+        #train_data, distill_data = torch.utils.data.random_split(train_data, lens)
 
         f_mcmc = fed_algos.F_MCMC_distill(num_clients = args.num_clients,
                                     base_net = base_net,
@@ -229,6 +235,24 @@ def main(args):
                                     task = task)
         f_mcmc.train(valloader=valloader)
 
+    elif mode == "g_distill_f_mcmc":
+        #split train data into distill and train
+        len_data = train_data.__len__()
+        len_more_data = int(round(len_data*0.2))
+        lens = [len_data - len_more_data, len_more_data]
+        train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+        inp, pred = next(iter(trainloader))
+        inp_dim = inp.shape
+
+        f_mcmc = fed_algos.Gen_F_MCMC_distill(num_clients = args.num_clients,
+                                    base_net = base_net,
+                                    traindata=train_data, distill_data = distill_data,
+                                    inp_dim = inp_dim,
+                                    num_rounds = 1,
+                                    hyperparams = mcmc_hyperparams, device=device, logger = logger,
+                                    non_iid = args.non_iid,
+                                    task = task)
+        f_mcmc.train(valloader=valloader)
     elif mode == "global_bayes":
         print("cSGHMC inference")
         
