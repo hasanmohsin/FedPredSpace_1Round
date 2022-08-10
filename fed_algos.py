@@ -297,7 +297,7 @@ class F_MCMC(EP_MCMC):
             #average to get p(y | x, D)
             # shape: batch_size x output_dim
             pred = torch.mean(pred_list, dim=0, keepdims=False)
-            
+
             #assuming a uniform posterior
             global_pred *= pred
         return global_pred/torch.sum(global_pred, dim=-1, keepdims=True)
@@ -335,8 +335,7 @@ class F_MCMC(EP_MCMC):
             x = x.to(self.device)
             y = y.to(self.device)
             pred = self.predict(x)
-
-            _, pred_class = torch.max(pred, 1)    
+            _, pred_class = torch.max(pred, 1)
 
             total += y.size(0)
             correct += (pred_class == y).sum().item()
@@ -462,7 +461,6 @@ class F_MCMC_distill(EP_MCMC):
             x = x.to(self.device)
             y = y.to(self.device)
             pred = self.predict(x)
-
             _, pred_class = torch.max(pred, 1)    
 
             total += y.size(0)
@@ -652,6 +650,188 @@ class FedPA(EP_MCMC):
         return
 
 
+class ONESHOT_FL:
+    def __init__(self, num_clients, base_net,
+                 traindata, distill_data,
+                 num_rounds,
+                 hyperparams, device, logger, non_iid=0.0, task="classify"):
+        self.logger = logger
+        self.all_data = traindata
+        self.lr = hyperparams['lr']
+        self.g_lr = hyperparams['g_lr']
+        self.device = device
+        self.num_clients = num_clients
+        self.datasize = copy.deepcopy(hyperparams['datasize'])
+        self.batch_size = hyperparams['batch_size']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.outdim = hyperparams['outdim']
+        self.optim_type = hyperparams['optim_type']
+
+        # initialize nets and data for all clients
+        self.client_nets = []
+        self.optimizers = []
+
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset=traindata,
+                                                                                   num_clients=num_clients,
+                                                                                   client_data_size=(
+                                                                                               self.datasize // num_clients),
+                                                                                   batch_size=self.batch_size,
+                                                                                   shuffle=False, non_iid_frac=non_iid,
+                                                                                   outdim=self.outdim)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
+
+        for c in range(num_clients):
+            self.client_nets.append(copy.deepcopy(base_net))
+
+            if self.optim_type == "sgdm":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr, momentum=0.9))
+            elif self.optim_type == "sgd":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr))
+            elif self.optim_type == "adam":
+                self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr=self.lr))
+            else:
+                utils.print_and_log("Optimizer type {} unkown, defualting to vanilla SGD")
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr))
+
+        self.num_rounds = num_rounds
+
+        self.task = task
+
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+
+        self.global_net = copy.deepcopy(base_net)
+        self.base_net = base_net
+
+
+        distill_loader = torch.utils.data.DataLoader(distill_data,
+                                                batch_size=self.batch_size, shuffle=True,
+                                                pin_memory=True)
+        self.student = copy.copy(base_net)
+        self.distill = kd.KD(teacher=self,
+                             student=self.student, lr=5e-3,
+                             device=self.device,
+                             train_loader=distill_loader
+                             )
+
+    def local_train(self, client_num):
+        c_dataloader = self.client_dataloaders[client_num]
+
+        self.client_nets[client_num], loss = train_nets.sgd_train_step(net=self.client_nets[client_num],
+                                                                       optimizer=self.optimizers[client_num],
+                                                                       criterion=self.criterion,
+                                                                       trainloader=c_dataloader, device=self.device)
+
+        print("Client {}, Loss: {}".format(client_num, loss))
+
+    # prediction on input x
+    def predict_classify(self, x):
+        client_pred = []
+        for c in range(self.num_clients):
+            self.client_nets[c] = self.client_nets[c].eval()
+            pred_logit = self.client_nets[c](x)
+
+            client_pred.append(pred_logit)
+        return torch.mean(torch.stack(client_pred), axis = 0)
+
+    def predict_regr(self, x):
+        global_pred = 0.0
+        var_sum = 0.0
+
+        for c in range(self.num_clients):
+            pred_list = self.client_nets[c].ensemble_inf(x, out_probs=True)
+
+            # average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
+            pred_var = torch.var(pred_list, dim=0, keepdims=False)
+
+            # assuming a uniform posterior
+            global_pred += pred_mean / pred_var
+            var_sum += 1 / pred_var
+
+        return global_pred / var_sum
+
+    def predict(self, x):
+        if self.task == "classify":
+            return self.predict_classify(x)
+        else:
+            return self.predict_regr(x)
+    def aggregate(self):
+        #self.distill.set_student(self.client_nets[0])
+
+        #train the student via kd
+        self.distill.train(num_epochs = 80)
+        self.student = self.distill.student
+        return
+
+    def global_update_step(self):
+        for client_num in range(self.num_clients):
+            for i in range(self.epoch_per_client):
+                self.local_train(client_num)
+        self.aggregate()
+
+    def test_classify(self, testloader):
+        total = 0
+        correct = 0
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = self.predict(x)
+
+            _, pred_class = torch.max(pred, 1)
+
+            total += y.size(0)
+            correct += (pred_class == y).sum().item()
+
+        acc = 100 * correct / total
+        print("Accuracy on test set: ", acc)
+        return acc
+
+    def test_mse(self, testloader):
+        total_loss = 0.0
+        criterion = torch.nn.MSELoss()
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            pred = self.predict(x)
+
+            pred = pred.reshape(y.shape)
+            total_loss += criterion(pred, y).item()
+
+        print("MSE on test set: ", total_loss)
+        return total_loss
+
+    def test_acc(self, testloader):
+        if self.task == "classify":
+            return self.test_classify(testloader)
+        else:
+            return self.test_mse(testloader)
+
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            self.global_update_step()
+            #acc = self.test_acc(valloader)
+            acc = self.distill.test_acc(valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
+
+            for c in range(self.num_clients):
+                acc_c = self.get_acc(self.client_nets[c],valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+        return
 
 
 #class PVI(FedAvg):
