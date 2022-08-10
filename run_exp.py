@@ -19,11 +19,11 @@ def main(args):
     utils.makedirs(args.save_dir)
 
     if args.mode == "fed_sgd":
-        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid)    
+        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid)    
     else:
-         fname = "{}/{}_{}_{}_clients_{}_rounds_log_{}_noniid.txt".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)    
+         fname = "{}/{}_{}_{}_clients_{}_rounds_log_{}_noniid".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)    
 
-    logger = open(fname, 'w')
+    logger = open(fname+".txt", 'w')
 
     utils.print_and_log("Experiment: Args {}".format(args), logger)
 

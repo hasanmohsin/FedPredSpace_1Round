@@ -1,6 +1,7 @@
 import os 
 import torch
 import numpy as np
+import pickle
 
 device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
 
@@ -61,3 +62,24 @@ def makedirs(dirname):
 def print_and_log(s, logger):
     print(s)
     logger.write(str(s) + '\n')
+
+
+def save_dict(dict, fname):
+    with open(fname, 'wb') as f:
+        pickle.dump(dict, fname)
+    return
+
+def load_dict(fname):
+    if os.path.isfile(fname):
+        dict = pickle.load(open(fname,'rb'))
+    else:
+        dict = {}
+    return dict
+
+def write_result_dict(result, seed, logger_file):
+    #parse file name of logger
+    fname_dict = os.path.splitext(logger_file)[0]
+    dict = load_dict(fname_dict)
+    dict['seed'] = result
+    save_dict(dict, fname_dict)
+    return

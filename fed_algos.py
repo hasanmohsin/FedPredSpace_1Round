@@ -20,6 +20,7 @@ class FedAvg:
         self.optim_type = hyperparams['optim_type']
         self.outdim = hyperparams['outdim']
         self.device = hyperparams['device']
+        self.seed = hyperparams['seed']
 
         self.logger = logger
 
@@ -139,6 +140,10 @@ class FedAvg:
             self.global_to_clients()
             acc = self.get_acc(self.global_net, valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
+        
+        #save final results here
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+
         return
 
 class EP_MCMC:
@@ -157,6 +162,7 @@ class EP_MCMC:
         self.batch_size = hyperparams['batch_size']
         self.epoch_per_client = hyperparams['epoch_per_client']
         self.outdim = hyperparams['outdim']
+        self.seed = hyperparams['seed']
 
         #initialize nets and data for all clients
         self.client_train = []
@@ -271,6 +277,8 @@ class EP_MCMC:
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 #ours
@@ -377,6 +385,8 @@ class F_MCMC(EP_MCMC):
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 
@@ -506,6 +516,8 @@ class F_MCMC_distill(EP_MCMC):
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 
@@ -638,6 +650,8 @@ class Gen_F_MCMC_distill(EP_MCMC):
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 #Federated posterior averaging
@@ -655,6 +669,7 @@ class FedPA(EP_MCMC):
         self.global_lr = hyperparams['global_lr'] # global learning rate should likely be higher
         self.global_train.net.requires_grad = True
         self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
+        self.seed = hyperparams['seed']
 
     def get_global_vec(self):
         #sample_net = copy.deepcopy(self.base_net)
@@ -781,6 +796,8 @@ class FedPA(EP_MCMC):
         for c in range(self.num_clients):
             acc_c = self.client_train[c].test_acc(valloader)
             utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 
