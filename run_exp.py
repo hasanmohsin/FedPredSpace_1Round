@@ -120,7 +120,8 @@ def main(args):
                         'batch_size': args.batch_size,
                         'optim_type': args.optim_type,
                         'datasize': len(train_data),
-                        'outdim': out_dim
+                        'outdim': out_dim,
+                        'seed': args.seed
     }
 
     #for mcmc techniques (per client)
@@ -135,7 +136,8 @@ def main(args):
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
                     'max_samples': 6,
-                    'outdim': out_dim
+                    'outdim': out_dim,
+                    'seed': args.seed
     }
 
     #do this for all datasets for fairness to the distillation algos
@@ -195,18 +197,18 @@ def main(args):
 
     elif mode == "oneshot_fl":
 
-        len_data = train_data.__len__()
-        len_more_data = int(round(len_data*0.2))
-        lens = [len_data - len_more_data, len_more_data]
-        train_data, distill_data = torch.utils.data.random_split(train_data, lens)
-        oenshot_fl = fed_algos.ONESHOT_FL(num_clients = args.num_clients,
+        #len_data = train_data.__len__()
+        #len_more_data = int(round(len_data*0.2))
+        #lens = [len_data - len_more_data, len_more_data]
+        #train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+        oneshot_fl = fed_algos.ONESHOT_FL(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data, distill_data = distill_data,
                                     num_rounds = 1,
                                     hyperparams = sgd_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)
-        oenshot_fl.train(valloader=valloader)
+        oneshot_fl.train(valloader=valloader)
     elif mode == "f_mcmc":
 
         f_mcmc = fed_algos.F_MCMC(num_clients = args.num_clients,

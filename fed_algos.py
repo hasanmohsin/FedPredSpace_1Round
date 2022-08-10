@@ -815,6 +815,7 @@ class ONESHOT_FL:
         self.epoch_per_client = hyperparams['epoch_per_client']
         self.outdim = hyperparams['outdim']
         self.optim_type = hyperparams['optim_type']
+        self.seed = hyperparams['seed']
 
         # initialize nets and data for all clients
         self.client_nets = []
@@ -980,6 +981,8 @@ class ONESHOT_FL:
             for c in range(self.num_clients):
                 acc_c = self.get_acc(self.client_nets[c],valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 
