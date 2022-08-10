@@ -78,7 +78,7 @@ def load_dict(fname):
 
 def write_result_dict(result, seed, logger_file):
     #parse file name of logger
-    fname_dict = os.path.splitext(logger_file.name)[0]
+    fname_dict = os.path.splitext(logger_file.name)[0]+".pickle"
     dict = load_dict(fname_dict)
     dict['seed'] = result
     save_dict(dict, fname_dict)
