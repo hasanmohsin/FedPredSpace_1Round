@@ -82,6 +82,6 @@ def write_result_dict(result, seed, logger_file):
     dict = load_dict(fname_dict)
     print("fname for dict: ", fname_dict)
     print("dict [{}] = {}".format(seed, result))
-    dict['seed'] = result
+    dict["{}".format(seed)] = result
     save_dict(dict, fname_dict)
     return
