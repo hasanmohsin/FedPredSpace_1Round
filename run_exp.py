@@ -19,9 +19,14 @@ def main(args):
     utils.makedirs(args.save_dir)
 
     if args.mode == "fed_sgd":
-        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid)    
+        exp_id = "{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid_seed_{}".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid, args.seed)    
+        fname = "{}/{}".format(args.save_dir, exp_id) 
     else:
-         fname = "{}/{}_{}_{}_clients_{}_rounds_log_{}_noniid".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)    
+        exp_id = "{}_{}_{}_clients_{}_rounds_log_{}_noniid_seed_{}".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid, args.seed)
+        fname = "{}/{}".format(args.save_dir, exp_id)
+        
+    model_save_dir = "{}/models".format(args.save_dir)    
+    
 
     logger = open(fname+".txt", 'w')
 
@@ -121,7 +126,9 @@ def main(args):
                         'optim_type': args.optim_type,
                         'datasize': len(train_data),
                         'outdim': out_dim,
-                        'seed': args.seed
+                        'seed': args.seed,
+                        'model_save_dir': model_save_dir,
+                        'model_save_name': exp_id
     }
 
     #for mcmc techniques (per client)

@@ -21,6 +21,8 @@ class FedAvg:
         self.outdim = hyperparams['outdim']
         self.device = hyperparams['device']
         self.seed = hyperparams['seed']
+        self.model_save_dir = hyperparams['model_save_dir']
+        self.model_save_name = hyperparams['model_save_name']
 
         self.logger = logger
 
@@ -65,6 +67,17 @@ class FedAvg:
             self.criterion = torch.nn.MSELoss()
 
         self.global_net = copy.deepcopy(base_net)
+
+    def save_models(self):
+        save_dir = self.model_save_dir
+        save_name = self.model_save_name
+        c_save = save_dir + "/"+save_name 
+
+        utils.makedirs(save_dir)
+
+        for c in range(self.num_clients):
+            path = c_save + "_client_" + str(c)  
+            torch.save(self.client_nets[c].state_dict(), path)
 
     #perform 1 epoch of updates on client_num
     def local_update_step(self, client_num):
@@ -143,7 +156,9 @@ class FedAvg:
         
         #save final results here
         utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
-
+        
+        self.save_models()
+        
         return
 
 class EP_MCMC:
