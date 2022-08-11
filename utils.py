@@ -66,7 +66,7 @@ def print_and_log(s, logger):
 
 def save_dict(dict, fname):
     with open(fname, 'wb') as f:
-        pickle.dump(dict, fname)
+        pickle.dump(dict, f)
     return
 
 def load_dict(fname):
@@ -80,6 +80,8 @@ def write_result_dict(result, seed, logger_file):
     #parse file name of logger
     fname_dict = os.path.splitext(logger_file.name)[0]+".pickle"
     dict = load_dict(fname_dict)
+    print("fname for dict: ", fname_dict)
+    print("dict [{}] = {}".format(seed, result))
     dict['seed'] = result
     save_dict(dict, fname_dict)
     return
