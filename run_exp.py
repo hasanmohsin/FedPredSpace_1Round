@@ -135,7 +135,7 @@ def main(args):
                     'M': 5, #4, # num_cycles 
                     'sample_per_cycle': 2,
                     'alpha': 0.9,
-                    'max_samples': 6,
+                    'max_samples': args.max_samples,
                     'outdim': out_dim,
                     'seed': args.seed
     }
@@ -172,6 +172,9 @@ def main(args):
         #add hyperparameter
         mcmc_hyperparams['rho'] = args.rho #1.0
         mcmc_hyperparams['global_lr'] = args.g_lr #1e-1 #1.0
+
+        #create new: globa optim type
+        mcmc_hyperparams['optim_type'] = args.optim_type
 
         if args.num_rounds > 1:
             #change number of cycles to 1, since we do multiple rounds
@@ -293,6 +296,8 @@ if __name__ == '__main__':
 
 
     parser.add_argument('--save_dir', type=str, default = "./results/")
+
+    parser.add_argument('--max_samples', type=int, default = 6)
 
     #for later - setting up train/test split
     #parser.add_argument('--ntrain', type=int, default=500)

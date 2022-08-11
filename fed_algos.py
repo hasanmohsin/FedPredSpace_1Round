@@ -666,7 +666,17 @@ class FedPA(EP_MCMC):
         self.rho = hyperparams['rho'] # 1.0
         self.global_lr = hyperparams['global_lr'] # global learning rate should likely be higher
         self.global_train.net.requires_grad = True
-        self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
+
+        self.g_optim_type = hyperparams['optim_type']
+
+        if self.g_optim_type == "sgdm":
+            self.global_optimizer = torch.optim.SGD(self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
+        elif self.optim_type == "sgd":
+            self.global_optimizer = torch.optim.SGD(self.global_train.net.parameters(), lr = self.global_lr)
+        elif self.optim_type == "adam":
+            self.global_optimizer = torch.optim.Adam(self.global_train.net.parameters(), lr = self.global_lr)
+        
+        #self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
         self.seed = hyperparams['seed']
 
     def get_global_vec(self):
