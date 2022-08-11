@@ -827,6 +827,9 @@ class ONESHOT_FL:
         self.num_clients = num_clients
         self.datasize = copy.deepcopy(hyperparams['datasize'])
         self.batch_size = hyperparams['batch_size']
+        self.kdlr = hyperparams['kd_lr']
+        self.kdopt = hyperparams['kd_optim_type']
+        self.kdepoch = hyperparams['kd_epochs']
         self.epoch_per_client = hyperparams['epoch_per_client']
         self.outdim = hyperparams['outdim']
         self.optim_type = hyperparams['optim_type']
@@ -878,7 +881,7 @@ class ONESHOT_FL:
                                                 pin_memory=True)
         self.student = copy.copy(base_net)
         self.distill = kd.KD(teacher=self,
-                             student=self.student, lr=5e-3,
+                             student=self.student, lr=self.kdlr,
                              device=self.device,
                              train_loader=distill_loader
                              )
@@ -930,7 +933,7 @@ class ONESHOT_FL:
         #self.distill.set_student(self.client_nets[0])
 
         #train the student via kd
-        self.distill.train(num_epochs = 80)
+        self.distill.train(num_epochs = self.kdepoch)
         self.student = self.distill.student
         return
 
