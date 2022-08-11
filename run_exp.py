@@ -211,6 +211,9 @@ def main(args):
         #len_more_data = int(round(len_data*0.2))
         #lens = [len_data - len_more_data, len_more_data]
         #train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+        sgd_hyperparams['kd_lr'] = args.kd_lr
+        sgd_hyperparams['kd_optim_type'] = args.kd_optim_type
+        sgd_hyperparams['kd_epochs'] = args.kd_epochs
         oneshot_fl = fed_algos.ONESHOT_FL(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data, distill_data = distill_data,
