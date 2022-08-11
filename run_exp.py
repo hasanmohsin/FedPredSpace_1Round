@@ -231,6 +231,11 @@ def main(args):
         #lens = [len_data - len_more_data, len_more_data]
         #train_data, distill_data = torch.utils.data.random_split(train_data, lens)
 
+        #additional hyperparams
+        mcmc_hyperparams['kd_lr'] = args.kd_lr
+        mcmc_hyperparams['kd_optim_type'] = args.kd_optim_type
+        mcmc_hyperparams['kd_epochs'] = args.kd_epochs
+
         f_mcmc = fed_algos.F_MCMC_distill(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data, distill_data = distill_data,
@@ -298,6 +303,9 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default = "./results/")
 
     parser.add_argument('--max_samples', type=int, default = 6)
+    parser.add_argument('--kd_optim_type', type =str, default = "adam")
+    parser.add_argument('--kd_lr', type=float, default=1e-4)
+    parser.add_argument('--kd_epochs', type=int, default = 50)
 
     #for later - setting up train/test split
     #parser.add_argument('--ntrain', type=int, default=500)

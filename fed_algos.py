@@ -406,10 +406,15 @@ class F_MCMC_distill(EP_MCMC):
                                                 pin_memory=True)
 
         self.student = copy.copy(base_net)
+        self.kd_optim_type = hyperparams['kd_optim_type']
+        self.kd_lr = hyperparams['kd_lr']
+        self.kd_epochs = hyperparams['kd_epochs']
+
         self.distill = kd.KD(teacher = self, 
-                             student = self.student, lr = 5e-3,
+                             student = self.student, lr = self.kd_lr,#5e-3
                              device = self.device,
-                             train_loader = distill_loader
+                             train_loader = distill_loader,
+                             kd_optim_type = self.kd_optim_type
                             )
 
     #do nothing in aggregate function
@@ -418,7 +423,7 @@ class F_MCMC_distill(EP_MCMC):
         self.distill.set_student(self.client_train[0].sampled_nets[-1])
 
         #train the student via kd
-        self.distill.train(num_epochs = 50)
+        self.distill.train(num_epochs = self.kd_epochs) #kd_epochs = 50
         self.student = self.distill.student
 
         return

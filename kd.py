@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt 
 
 class KD:
-    def __init__(self, teacher, student, lr, device, train_loader):
+    def __init__(self, teacher, student, lr, device, train_loader, kd_optim_type = "sgdm"):
         self.teacher = teacher
         
         self.student = student
@@ -16,11 +16,15 @@ class KD:
         #self.student = copy.copy(teacher.client_train[0].sampled_nets[5])
 
         self.lr = lr
+        self.kd_optim_type = kd_optim_type
         
-        self.optimizer = torch.optim.Adam(params = student.parameters(), lr = 1e-4)#, weight_decay=0.00001)
-        
-        #base_opt = torch.optim.SGD(self.student.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.00001)
-        #self.optimizer = swa.SWA(base_opt, swa_start=100, swa_freq=10, swa_lr=None)
+        if kd_optim_type == "adam":
+            self.optimizer = torch.optim.Adam(params = student.parameters(), lr = self.lr)#, weight_decay=0.00001)
+        elif kd_optim_type == "sgdm":
+            self.optimizer = torch.optim.SGD(self.student.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00001)
+        elif kd_optim_type == "swa":
+            base_opt = torch.optim.SGD(self.student.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00001)
+            self.optimizer = swa.SWA(base_opt, swa_start=100, swa_freq=10, swa_lr=None)
 
         self.train_loader = train_loader
 
