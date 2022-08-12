@@ -691,9 +691,9 @@ class FedPA(EP_MCMC):
 
         if self.g_optim_type == "sgdm":
             self.global_optimizer = torch.optim.SGD(self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
-        elif self.optim_type == "sgd":
+        elif self.g_optim_type == "sgd":
             self.global_optimizer = torch.optim.SGD(self.global_train.net.parameters(), lr = self.global_lr)
-        elif self.optim_type == "adam":
+        elif self.g_optim_type == "adam":
             self.global_optimizer = torch.optim.Adam(self.global_train.net.parameters(), lr = self.global_lr)
         
         #self.global_optimizer = torch.optim.SGD(params=self.global_train.net.parameters(), lr = self.global_lr, momentum=0.9)
