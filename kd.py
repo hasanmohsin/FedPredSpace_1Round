@@ -88,7 +88,9 @@ class KD:
         for i in range(num_epochs):
             epoch_loss = self.train_step()
             print("Epoch: ", i+1, "Loss: ", epoch_loss)
-            self.test_acc(self.train_loader)
+            
+            if (i+1)%20 == 0:
+                self.test_acc(self.train_loader)
         
         print("Training Done!")
         return

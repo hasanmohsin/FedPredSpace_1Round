@@ -19,9 +19,15 @@ def main(args):
     utils.makedirs(args.save_dir)
 
     if args.mode == "fed_sgd":
-        fname = "{}/{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid)    
+        exp_id = "{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid_seed_{}".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid, args.seed)    
+        fname = "{}/{}".format(args.save_dir, exp_id, args.seed) 
     else:
-         fname = "{}/{}_{}_{}_clients_{}_rounds_log_{}_noniid".format(args.save_dir, args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)    
+        #took out seed name for non-fed-sgd runs so that the results are in a single dict - this is a hack - change later!
+        exp_id = "{}_{}_{}_clients_{}_rounds_log_{}_noniid".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)
+        fname = "{}/{}".format(args.save_dir, exp_id)
+        
+    model_save_dir = "{}/models".format(args.save_dir)    
+    
 
     logger = open(fname+".txt", 'w')
 
@@ -121,13 +127,17 @@ def main(args):
                         'optim_type': args.optim_type,
                         'datasize': len(train_data),
                         'outdim': out_dim,
-                        'seed': args.seed
+                        'seed': args.seed,
+                        'model_save_dir': model_save_dir,
+                        'model_save_name': exp_id,
+                        'exp_id': exp_id,
+                        'save_dir': args.save_dir
     }
 
     #for mcmc techniques (per client)
     #num_mcmc_epochs = args.num_rounds * args.num_epochs_per_client
 
-    mcmc_hyperparams = {'epoch_per_client': args.epoch_per_client,
+    mcmc_hyperparams = { 'epoch_per_client': args.epoch_per_client,
                     'weight_decay': 5e-4,
                     'datasize': len(train_data),
                     'batch_size': args.batch_size, #100
@@ -137,7 +147,13 @@ def main(args):
                     'alpha': 0.9,
                     'max_samples': args.max_samples,
                     'outdim': out_dim,
-                    'seed': args.seed
+                    'seed': args.seed,
+                    'exp_id': exp_id,
+                    'model_save_dir': model_save_dir,
+                    'save_dir' : args.save_dir,
+                    'rho': args.rho, #below 3 are for fed_pa
+                    'global_lr': args.g_lr,
+                    'optim_type': args.optim_type
     }
 
     #do this for all datasets for fairness to the distillation algos
