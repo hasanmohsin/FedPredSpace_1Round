@@ -137,7 +137,7 @@ def main(args):
     #for mcmc techniques (per client)
     #num_mcmc_epochs = args.num_rounds * args.num_epochs_per_client
 
-    mcmc_hyperparams = {'epoch_per_client': args.epoch_per_client,
+    mcmc_hyperparams = { 'epoch_per_client': args.epoch_per_client,
                     'weight_decay': 5e-4,
                     'datasize': len(train_data),
                     'batch_size': args.batch_size, #100
@@ -150,7 +150,10 @@ def main(args):
                     'seed': args.seed,
                     'exp_id': exp_id,
                     'model_save_dir': model_save_dir,
-                    'save_dir' : args.save_dir
+                    'save_dir' : args.save_dir,
+                    'rho': args.rho, #below 3 are for fed_pa
+                    'global_lr': args.g_lr,
+                    'optim_type': args.optim_type
     }
 
     #do this for all datasets for fairness to the distillation algos

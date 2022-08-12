@@ -452,6 +452,12 @@ class F_MCMC_distill(EP_MCMC):
                              kd_optim_type = self.kd_optim_type
                             )
 
+        self.fed_pa_trainer = FedPA(num_clients = num_clients, base_net = base_net, 
+                                    traindata = traindata, 
+                                    num_rounds = 1, 
+                                    hyperparams = hyperparams, logger=None, non_iid = non_iid, task = self.task,
+                                    device= self.device)
+
     #do nothing in aggregate function
     def aggregate(self):
         #try better student init
@@ -612,6 +618,20 @@ class F_MCMC_distill(EP_MCMC):
         #save to dict 
         utils.write_result_dict_to_file(result=ep_mcmc_acc, seed = self.seed, 
                                  file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"))
+
+
+        #for fed_pa 1 round results
+        #copy over trained clients
+        self.fed_pa_trainer.client_train = copy.deepcopy(self.client_train)
+
+        #take step of FedPA 
+        self.fed_pa_trainer.global_update_step_trained_clients()
+        fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
+        utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {}".format(i, fed_pa_acc), self.logger)
+        
+        #save to dict 
+        utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"))
 
 
         #save client sample models 
@@ -868,6 +888,23 @@ class FedPA(EP_MCMC):
         #train client models/sample
         for client_num in range(self.num_clients):
             self.local_train(client_num)
+            delta = self.local_delta(client_num)
+            deltas.append(delta)
+        deltas = torch.stack(deltas, dim=0)
+        
+        #global gradient
+        g_delta = torch.mean(deltas, dim= 0)
+        
+        #take optimizer step in direction of g_delta for global net
+        self.global_opt(g_delta)
+        return 
+    
+    #when clients are already trained
+    def global_update_step_trained_clients(self):
+        deltas = []
+
+        #train client models/sample
+        for client_num in range(self.num_clients):
             delta = self.local_delta(client_num)
             deltas.append(delta)
         deltas = torch.stack(deltas, dim=0)
