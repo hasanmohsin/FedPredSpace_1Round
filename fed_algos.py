@@ -1041,22 +1041,14 @@ class ONESHOT_FL:
         return torch.mean(torch.stack(client_pred), axis = 0)
 
     def predict_regr(self, x):
-        global_pred = 0.0
-        var_sum = 0.0
-
+        client_pred = []
         for c in range(self.num_clients):
-            pred_list = self.client_nets[c].ensemble_inf(x, out_probs=True)
+            self.client_nets[c] = self.client_nets[c].eval()
+            pred = self.client_nets[c](x)
+            client_pred.append(pred)
 
-            # average to get p(y | x, D)
-            # shape: batch_size x output_dim
-            pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
-            pred_var = torch.var(pred_list, dim=0, keepdims=False)
+        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
 
-            # assuming a uniform posterior
-            global_pred += pred_mean / pred_var
-            var_sum += 1 / pred_var
-
-        return global_pred / var_sum
 
     def predict(self, x):
         if self.task == "classify":
@@ -1126,7 +1118,6 @@ class ONESHOT_FL:
     def train(self, valloader):
         for i in range(self.num_rounds):
             self.global_update_step()
-            #acc = self.test_acc(valloader)
             acc = self.distill.test_acc(valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
