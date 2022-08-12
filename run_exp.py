@@ -20,9 +20,10 @@ def main(args):
 
     if args.mode == "fed_sgd":
         exp_id = "{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid_seed_{}".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid, args.seed)    
-        fname = "{}/{}".format(args.save_dir, exp_id) 
+        fname = "{}/{}".format(args.save_dir, exp_id, args.seed) 
     else:
-        exp_id = "{}_{}_{}_clients_{}_rounds_log_{}_noniid_seed_{}".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid, args.seed)
+        #took out seed name for non-fed-sgd runs so that the results are in a single dict - this is a hack - change later!
+        exp_id = "{}_{}_{}_clients_{}_rounds_log_{}_noniid".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)
         fname = "{}/{}".format(args.save_dir, exp_id)
         
     model_save_dir = "{}/models".format(args.save_dir)    
