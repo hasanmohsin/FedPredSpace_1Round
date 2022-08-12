@@ -883,7 +883,8 @@ class ONESHOT_FL:
         self.distill = kd.KD(teacher=self,
                              student=self.student, lr=self.kdlr,
                              device=self.device,
-                             train_loader=distill_loader
+                             train_loader=distill_loader,
+                             kd_optim_type = self.kdopt
                              )
 
     def local_train(self, client_num):
