@@ -85,3 +85,25 @@ def write_result_dict(result, seed, logger_file):
     dict["{}".format(seed)] = result
     save_dict(dict, fname_dict)
     return
+
+def write_result_dict_to_file(result, seed, file_name):
+    #parse file name of logger
+    fname_dict = file_name + ".pickle"
+    dict = load_dict(fname_dict)
+    print("fname for dict: ", fname_dict)
+    print("dict [{}] = {}".format(seed, result))
+    dict["{}".format(seed)] = result
+    save_dict(dict, fname_dict)
+    return
+
+#given the id string for an experiment, and its mode, convert to the id string of the target mode
+def change_exp_id(exp_id_src, source_mode, target_mode):
+    exp_id_target = exp_id_src.replace(source_mode, target_mode)
+    #comps = exp_id_src.split('_')
+
+    #for i in range(len(comps)):
+    #    if comps[i] == source_mode:
+    #        comps[i] = target_mode
+
+    #exp_id_target = "_".join(comps)
+    return exp_id_target

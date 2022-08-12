@@ -129,7 +129,9 @@ def main(args):
                         'outdim': out_dim,
                         'seed': args.seed,
                         'model_save_dir': model_save_dir,
-                        'model_save_name': exp_id
+                        'model_save_name': exp_id,
+                        'exp_id': exp_id,
+                        'save_dir': args.save_dir
     }
 
     #for mcmc techniques (per client)
@@ -145,7 +147,10 @@ def main(args):
                     'alpha': 0.9,
                     'max_samples': args.max_samples,
                     'outdim': out_dim,
-                    'seed': args.seed
+                    'seed': args.seed,
+                    'exp_id': exp_id,
+                    'model_save_dir': model_save_dir,
+                    'save_dir' : args.save_dir
     }
 
     #do this for all datasets for fairness to the distillation algos

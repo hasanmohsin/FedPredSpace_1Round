@@ -178,6 +178,10 @@ class EP_MCMC:
         self.epoch_per_client = hyperparams['epoch_per_client']
         self.outdim = hyperparams['outdim']
         self.seed = hyperparams['seed']
+        self.exp_id = hyperparams['exp_id']
+    
+        self.model_save_dir = hyperparams['model_save_dir']
+        self.save_dir = hyperparams['save_dir']
 
         #initialize nets and data for all clients
         self.client_train = []
@@ -212,6 +216,22 @@ class EP_MCMC:
                                             device = device, task = task, hyperparams=hyperparams)#copy.deepcopy(base_net)
         self.base_net = base_net
         self.num_g_samples = 10
+
+
+    def save_models(self):
+        save_dir = self.model_save_dir
+        save_name = utils.change_exp_id(self.exp_id, "distill_f_mcmc", "mcmc") + "_seed_" + str(self.seed)  
+        c_save = save_dir + "/"+save_name 
+
+        utils.makedirs(save_dir)
+
+        for c in range(self.num_clients):
+            cpath = c_save + "_client_" + str(c)  
+
+            for idx, weight_dict in enumerate(self.client_train[c].sampled_nets):
+                path = cpath + "_sample_" + str(idx) 
+                torch.save(weight_dict, path)
+
 
     def local_train(self, client_num):
         #trains for above specified epochs per client 
@@ -443,6 +463,45 @@ class F_MCMC_distill(EP_MCMC):
 
         return
     
+    #so we can compare with EP MCMC 
+    def ep_mcmc_aggregate(self):
+        #in aggregation step - average all models
+        #global_v = 0.0 #torch.nn.utils.paramters_to_vector(self.global_net.parameters())
+
+        global_prec = 0.0
+        global_mean = 0.0
+
+        #average over clients    
+        for c in range(self.num_clients):
+            mean, cov = self.get_client_sample_mean_cov(c)
+            client_prec = 1 #/self.num_clients #1/cov #torch.inv(cov) ########################################
+            global_prec += client_prec
+            global_mean += client_prec * mean #client_prec@mean
+            #print("Client {} mean {}".format(c, mean))
+
+        global_mean = (1/global_prec) * global_mean #torch.inv(global_prec) @ global_mean
+        global_var = (1/global_prec)*torch.ones_like(global_mean).to(self.device)
+
+        dist = torch.distributions.Normal(global_mean, global_var.reshape(1, -1))
+        dist = torch.distributions.independent.Independent(dist, 1)
+        #dist = torch.distributions.MultivariateNormal(loc = global_mean, precision_matrix=global_prec)
+        global_samples = dist.sample([self.num_g_samples])
+        
+        #print("global mean shape: ", global_mean.shape)
+        #print("global var shape: ", global_var.shape)
+        #print("global samples shape: ", global_samples.shape)
+    
+        self.global_train.sampled_nets = []
+        
+        for s in range(self.num_g_samples):
+            sample = global_mean #global_samples[s,0,:] #######################################
+
+            #load into global net
+            torch.nn.utils.vector_to_parameters(sample, self.global_train.net.parameters())
+            self.global_train.sampled_nets.append(copy.deepcopy(self.global_train.net.state_dict()))
+
+        return
+
     #prediction on input x
     def predict_classify(self, x):
         global_pred = 1.0
@@ -521,7 +580,7 @@ class F_MCMC_distill(EP_MCMC):
             return self.test_classify(testloader)
         else:
             return self.test_mse(testloader)
-
+        
 
     def train(self, valloader):
         for i in range(self.num_rounds):
@@ -529,13 +588,35 @@ class F_MCMC_distill(EP_MCMC):
 
             acc = self.distill.test_acc(valloader)
             #acc = self.test_acc(valloader)
-            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
+            utils.print_and_log("Global rounds completed: {}, distilled_f_mcmc test_acc: {}".format(i, acc), self.logger)
 
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
 
         utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+
+        #evaluate samples on other methods (FMCMC, and EP MCMC)
+        f_mcmc_acc = self.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, f_mcmc test_acc: {}".format(i, f_mcmc_acc), self.logger)
+        
+        #save to dict
+        utils.write_result_dict_to_file(result=f_mcmc_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"))
+
+        #compute ep mcmc result and store in global_train
+        self.ep_mcmc_aggregate()
+        ep_mcmc_acc = self.global_train.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, ep_mcmc test_acc: {}".format(i, ep_mcmc_acc), self.logger)
+        
+        #save to dict 
+        utils.write_result_dict_to_file(result=ep_mcmc_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"))
+
+
+        #save client sample models 
+        self.save_models()
+
         return
 
 
