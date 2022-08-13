@@ -1146,7 +1146,7 @@ class ONESHOT_FL:
     def __init__(self, num_clients, base_net,
                  traindata, distill_data,
                  num_rounds,
-                 hyperparams, device, logger, non_iid=0.0, task="classify"):
+                 hyperparams, device, args,logger, non_iid=0.0, task="classify"):
         self.logger = logger
         self.all_data = traindata
         self.lr = hyperparams['lr']
@@ -1162,7 +1162,7 @@ class ONESHOT_FL:
         self.outdim = hyperparams['outdim']
         self.optim_type = hyperparams['optim_type']
         self.seed = hyperparams['seed']
-
+        self.args = args
         # initialize nets and data for all clients
         self.client_nets = []
         self.optimizers = []
@@ -1257,7 +1257,12 @@ class ONESHOT_FL:
         self.distill.train(num_epochs = self.kdepoch)
         self.student = self.distill.student
         return
-
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
+            print(PATH)
+            self.client_nets[client_num].load_state_dict(torch.load(PATH))
+        self.aggregate()
     def global_update_step(self):
         for client_num in range(self.num_clients):
             for i in range(self.epoch_per_client):
@@ -1313,6 +1318,7 @@ class ONESHOT_FL:
     def train(self, valloader):
         for i in range(self.num_rounds):
             self.global_update_step()
+            #self.global_update_step_trained_clients()
             acc = self.distill.test_acc(valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
