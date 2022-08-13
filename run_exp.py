@@ -231,6 +231,19 @@ def main(args):
                                     non_iid = args.non_iid,
                                     task = task)
         oneshot_fl.train(valloader=valloader)
+    elif mode == "oneshot_fl_cs":
+
+        sgd_hyperparams['kd_lr'] = args.kd_lr
+        sgd_hyperparams['kd_optim_type'] = args.kd_optim_type
+        sgd_hyperparams['kd_epochs'] = args.kd_epochs
+        oneshot_fl_cs = fed_algos.ONESHOT_FL_CS(num_clients=args.num_clients,
+                                          base_net=base_net,
+                                          traindata=train_data, distill_data=distill_data,
+                                          num_rounds=1,
+                                          hyperparams=sgd_hyperparams, device=device, logger=logger,
+                                          non_iid=args.non_iid,
+                                          task=task)
+        oneshot_fl_cs.train(valloader=valloader)
     elif mode == "f_mcmc":
 
         f_mcmc = fed_algos.F_MCMC(num_clients = args.num_clients,
