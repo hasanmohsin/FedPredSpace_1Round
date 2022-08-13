@@ -19,8 +19,8 @@ def main(args):
     utils.makedirs(args.save_dir)
 
     if args.mode == "fed_sgd":
-        exp_id = "{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid_seed_{}".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid, args.seed)    
-        fname = "{}/{}".format(args.save_dir, exp_id, args.seed) 
+        exp_id = "{}_{}_{}_clients_{}_rounds_{}_optim_log_{}_noniid".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.optim_type, args.non_iid)    
+        fname = "{}/{}_{}".format(args.save_dir, exp_id, args.seed) 
     else:
         #took out seed name for non-fed-sgd runs so that the results are in a single dict - this is a hack - change later!
         exp_id = "{}_{}_{}_clients_{}_rounds_log_{}_noniid".format(args.dataset, args.mode, args.num_clients, args.num_rounds, args.non_iid)
@@ -129,7 +129,6 @@ def main(args):
                         'outdim': out_dim,
                         'seed': args.seed,
                         'model_save_dir': model_save_dir,
-                        'model_save_name': exp_id,
                         'exp_id': exp_id,
                         'save_dir': args.save_dir
     }

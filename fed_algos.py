@@ -22,7 +22,8 @@ class FedAvg:
         self.device = hyperparams['device']
         self.seed = hyperparams['seed']
         self.model_save_dir = hyperparams['model_save_dir']
-        self.model_save_name = hyperparams['model_save_name']
+        self.exp_id = hyperparams['exp_id']
+        self.save_dir = hyperparams['save_dir']
 
         self.logger = logger
 
@@ -70,7 +71,7 @@ class FedAvg:
 
     def save_models(self):
         save_dir = self.model_save_dir
-        save_name = self.model_save_name
+        save_name = self.exp_id + "_seed_"+str(self.seed)
         c_save = save_dir + "/"+save_name 
 
         utils.makedirs(save_dir)
@@ -155,7 +156,8 @@ class FedAvg:
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
         
         #save final results here
-        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         
         self.save_models()
         
@@ -1322,4 +1324,4 @@ class ONESHOT_FL:
         return
 
 
-#class PVI(FedAvg):
+
