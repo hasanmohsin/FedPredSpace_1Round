@@ -1050,9 +1050,13 @@ class ONESHOT_FL_CS:
             pred_logit = self.client_nets[c](x)
             self.client_nets2[c] = self.client_nets2[c].eval()
             pred_logit2 = self.client_nets2[c](x)
-            client_pred.append(pred_logit)
-            client_pred.append(pred_logit2)
-        return torch.mean(torch.stack(client_pred), axis = 0)
+            client_pred.append(pred_logit.view(pred_logit.size(0), -1).max(dim=-1).indices)
+            client_pred.append(pred_logit2.view(pred_logit2.size(0), -1).max(dim=-1).indices)
+        pred_class = torch.mode(torch.transpose(torch.stack(client_pred), 0, 1)).values
+        pred_dist = torch.zeros(pred_class.size(0), pred_logit.size(1))
+        for i in range(x.size(0)):
+            pred_dist[i][pred_class[i]] = 1
+        return pred_dist
 
     def predict_regr(self, x):
         client_pred = []
@@ -1100,7 +1104,6 @@ class ONESHOT_FL_CS:
         acc = 100 * correct / total
         print("Accuracy on test set: ", acc)
         return acc
-
     def test_mse(self, testloader):
         total_loss = 0.0
         criterion = torch.nn.MSELoss()
