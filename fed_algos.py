@@ -952,9 +952,10 @@ class ONESHOT_FL_CS:
     def __init__(self, num_clients, base_net,
                  traindata, distill_data,
                  num_rounds,
-                 hyperparams, device, logger, non_iid=0.0, task="classify"):
+                 hyperparams, device, args,logger, non_iid=0.0, task="classify"):
         self.logger = logger
         self.all_data = traindata
+        self.args = args
         self.lr = hyperparams['lr']
         self.g_lr = hyperparams['g_lr']
         self.device = device
@@ -1031,16 +1032,20 @@ class ONESHOT_FL_CS:
     def local_train(self, client_num):
         c_dataloader = self.client_dataloaders[client_num]
 
-        self.client_nets[client_num], loss = train_nets.sgd_train_step(net=self.client_nets[client_num],
-                                                                       optimizer=self.optimizers[client_num],
-                                                                       criterion=self.criterion,
-                                                                       trainloader=c_dataloader, device=self.device)
         self.client_nets2[client_num], loss = train_nets.sgd_train_step(net=self.client_nets2[client_num],
                                                                        optimizer=self.optimizers2[client_num],
                                                                        criterion=self.criterion,
                                                                        trainloader=c_dataloader, device=self.device)
 
         print("Client {}, Loss: {}".format(client_num, loss))
+
+    '''
+    self.client_nets[client_num], loss = train_nets.sgd_train_step(net=self.client_nets[client_num],
+                                                                       optimizer=self.optimizers[client_num],
+                                                                       criterion=self.criterion,
+                                                                trainloader=c_dataloader, device=self.device)
+    '''
+
 
     # prediction on input x
     def predict_classify(self, x):
@@ -1131,10 +1136,17 @@ class ONESHOT_FL_CS:
             return utils.classify_acc(net, valloader)
         else:
             return utils.regr_acc(net, valloader)
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
+            self.client_nets[client_num].load_state_dict(torch.load(PATH))
+            for i in range(self.epoch_per_client):
+                self.local_train(client_num)
+        self.aggregate()
 
     def train(self, valloader):
         for i in range(self.num_rounds):
-            self.global_update_step()
+            self.global_update_step_trained_clients()
             acc = self.distill.test_acc(valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
