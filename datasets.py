@@ -123,13 +123,14 @@ def get_realestate(batch_size, normalize = True):
     df1 = pd.read_excel('Dataset/Real estate valuation data set.xlsx',header=None,skiprows=1, na_filter=True,names=col1)
     df1 = df1.dropna()
     if normalize:
-        df1 =(df1-df1.min())/(df1.max()-df1.min())
+        #df1 = (df1-df1.min())/(df1.max()-df1.min())
+        df1 =(df1 - df1.mean())/(df1.std()) #(df1-df1.min())/(df1.max()-df1.min())
     data=df1[col1]
     df1 = df1.drop(columns=['No'])
     col1=df1.columns.tolist()
     target = data.pop('Y house price of unit area')
     ds = tf.data.Dataset.from_tensor_slices((data.values, target.values))
-    train_size = int(len(ds) * 0.7)
+    train_size = int(len(ds) * 0.8)
     dataset = (
         ds
         .map(lambda x, y: (x, tf.cast(y, tf.float32)))
@@ -146,7 +147,7 @@ def get_realestate(batch_size, normalize = True):
         train_ds, batch_size, shuffle=True
     )
     testloader = torch.utils.data.DataLoader(
-        test_ds, batch_size, shuffle=True
+        test_ds, batch_size, shuffle=False
     )
     return trainloader, testloader, train_ds, df1
 
@@ -180,11 +181,12 @@ def get_forestfire(batch_size, normalize = True):
                         "sun":7},inplace=True)
     df1['area'] = df1['area'].apply(lambda x: np.log(x+1))
     if normalize:
-        df1 =(df1-df1.min())/(df1.max()-df1.min())
+        #df1 = (df1-df1.min())/(df1.max()-df1.min())
+        df1 = (df1 - df1.mean())/(df1.std()) #(df1-df1.min())/(df1.max()-df1.min())
     data=df1[col1]
     target = data.pop('area')
     ds = tf.data.Dataset.from_tensor_slices((data.values, target.values))
-    train_size = int(len(ds) * 0.7)
+    train_size = int(len(ds) * 0.8)
     dataset = (
         ds
         .map(lambda x, y: (x, tf.cast(y, tf.float32)))
@@ -201,7 +203,7 @@ def get_forestfire(batch_size, normalize = True):
         train_ds, batch_size, shuffle=True
     )
     testloader = torch.utils.data.DataLoader(
-        test_ds, batch_size, shuffle=True
+        test_ds, batch_size, shuffle=False
     )
     return trainloader, testloader, train_ds, df1
 
@@ -233,11 +235,12 @@ def get_winequality(batch_size, normalize = True):
     df1 = pd.read_csv('Dataset/winequality-red.csv',header=None,skiprows=1, na_filter=True,names=col1,delimiter=';')
     df1 = df1.dropna()
     if normalize:
-        df1 =(df1-df1.min())/(df1.max()-df1.min())
+        #df1 = (df1-df1.min())/(df1.max()-df1.min())
+        df1 = (df1 - df1.mean())/(df1.std())#(df1-df1.min())/(df1.max()-df1.min())
     data=df1[col1]
     target = data.pop('quality')
     ds = tf.data.Dataset.from_tensor_slices((data.values, target.values))
-    train_size = int(len(ds) * 0.7)
+    train_size = int(len(ds) * 0.8)
     dataset = (
         ds
         .map(lambda x, y: (x, tf.cast(y, tf.float32)))
@@ -254,7 +257,7 @@ def get_winequality(batch_size, normalize = True):
         train_ds, batch_size, shuffle=True
     )
     testloader = torch.utils.data.DataLoader(
-        test_ds, batch_size, shuffle=True
+        test_ds, batch_size, shuffle=False
     )
     return trainloader, testloader, train_ds, df1
 
@@ -291,7 +294,8 @@ def get_airquality(batch_size, normalize = True):
     df1 = df1.drop(columns=['TIME'])
     col1 = df1.columns.tolist()
     if normalize:
-        df1 =(df1-df1.min())/(df1.max()-df1.min())
+        #df1 = (df1-df1.min())/(df1.max()-df1.min())
+        df1 = (df1 - df1.mean())/(df1.std()) #(df1-df1.min())/(df1.max()-df1.min())
     data=df1[col1]
     target = data.pop('CO_GT')
 
@@ -306,7 +310,7 @@ def get_airquality(batch_size, normalize = True):
         train_ds, batch_size, shuffle = True
     )
     testloader = torch.utils.data.DataLoader(
-        test_ds, batch_size, shuffle = True
+        test_ds, batch_size, shuffle = False
     )
     return trainloader, testloader, train_ds, df1
 
@@ -339,7 +343,8 @@ def get_bike(batch_size, normalize = True):
     df1 = df1.drop(columns=['instant'])
     col1=df1.columns.tolist()
     if normalize:
-        df1 =(df1-df1.min())/(df1.max()-df1.min())
+        #df1 = (df1-df1.min())/(df1.max()-df1.min())
+        df1 = (df1 - df1.mean())/(df1.std()) #(df1-df1.min())/(df1.max()-df1.min())
     data=df1[col1]
     target = data.pop('cnt')
 
@@ -354,7 +359,7 @@ def get_bike(batch_size, normalize = True):
         train_ds, batch_size, shuffle = True
     )
     testloader = torch.utils.data.DataLoader(
-        test_ds, batch_size, shuffle = True
+        test_ds, batch_size, shuffle = False
     )
     return trainloader, testloader, train_ds, df1
 

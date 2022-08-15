@@ -19,7 +19,7 @@ class KD:
         self.kd_optim_type = kd_optim_type
         
         if kd_optim_type == "adam":
-            self.optimizer = torch.optim.Adam(params = student.parameters(), lr = self.lr)#, weight_decay=0.00001)
+            self.optimizer = torch.optim.Adam(params = self.student.parameters(), lr = self.lr)#, weight_decay=0.00001)
         elif kd_optim_type == "sgdm":
             self.optimizer = torch.optim.SGD(self.student.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00001)
         elif kd_optim_type == "swa":
@@ -71,7 +71,7 @@ class KD:
             #print("Student out size: {}".format(pred_logits.size()))
             #print("Teaher out size: {}".format(teach_targ.size()))
 
-            loss = self.criterion(pred_logits, teach_targ)
+            loss = self.criterion(pred_logits, teach_targ.detach())
             loss.backward()
             self.optimizer.step()
 
@@ -108,7 +108,7 @@ class KD:
         for batch_idx, (x, y) in enumerate(testloader):
             x  = x.to(self.device)
             y = y.to(self.device)
-
+            
             t_pred = self.teacher.predict(x)
 
             #average to get p(y | x, D)
@@ -126,8 +126,10 @@ class KD:
             else:
                 t_pred = t_pred.reshape(y.shape)
                 s_pred = s_pred.reshape(y.shape)
+
                 s_loss = self.criterion(s_pred, y)
                 t_loss = self.criterion(t_pred, y)
+
                 total_s_loss += s_loss.item()
                 total_t_loss += t_loss.item()
 

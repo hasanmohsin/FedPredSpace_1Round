@@ -529,18 +529,22 @@ class F_MCMC_distill(EP_MCMC):
         global_pred = 0.0
         var_sum = 0.0
 
+        #pred_list_prior = self.client_train[c].ensemble_inf(x,)
+
         for c in range(self.num_clients):
             pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
-                
+            
             #average to get p(y | x, D)
             # shape: batch_size x output_dim
             pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
-            pred_var = torch.var(pred_list, dim = 0, keepdims = False)
+
+            #the variance in the prediction is 1.0 (the homeoscedatic assumed variance) + bayesian variance
+            pred_var = 1.0 + torch.var(pred_list, dim = 0, keepdims = False)
 
             #assuming a uniform posterior
             global_pred += pred_mean/pred_var
             var_sum += 1/pred_var
-        
+
         return global_pred/var_sum
 
 
@@ -1187,6 +1191,9 @@ class ONESHOT_FL:
         self.client_nets = []
         self.optimizers = []
 
+        self.exp_id = hyperparams['exp_id']
+        self.save_dir = hyperparams['save_dir']
+
         if non_iid > 0.0:
             self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset=traindata,
                                                                                    num_clients=num_clients,
@@ -1271,7 +1278,7 @@ class ONESHOT_FL:
         else:
             return self.predict_regr(x)
     def aggregate(self):
-        #self.distill.set_student(self.client_nets[0])
+        self.distill.set_student(self.client_nets[0].state_dict())
 
         #train the student via kd
         self.distill.train(num_epochs = self.kdepoch)
@@ -1346,7 +1353,14 @@ class ONESHOT_FL:
                 acc_c = self.get_acc(self.client_nets[c],valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
 
-        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+
+        #teacher acc
+        teacher_acc = self.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}".format(i, teacher_acc), self.logger)
+        utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"))
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
 
