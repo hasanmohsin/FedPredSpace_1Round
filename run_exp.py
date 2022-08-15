@@ -141,8 +141,9 @@ def main(args):
                     'datasize': len(train_data),
                     'batch_size': args.batch_size, #100
                     'init_lr': args.lr, #0.1, #0.5
-                    'M': 5, #4, # num_cycles 
-                    'sample_per_cycle': 2,
+                    'M': args.num_cycles, #5, #4, # num_cycles 
+                    'sample_per_cycle': args.sample_per_cycle,
+                    'temp':args.temp,
                     'alpha': 0.9,
                     'max_samples': args.max_samples,
                     'outdim': out_dim,
@@ -333,6 +334,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--save_dir', type=str, default = "./results/")
 
+    parser.add_argument('--sample_per_cycle', type=int, default=2)
+    parser.add_argument('--temp', type=float, default = -1) #-1 => 1/datasize
+    parser.add_argument('--num_cycles', type=int, default=5)
     parser.add_argument('--max_samples', type=int, default = 6)
     parser.add_argument('--kd_optim_type', type =str, default = "adam")
     parser.add_argument('--kd_lr', type=float, default=1e-4)
