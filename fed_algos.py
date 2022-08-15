@@ -529,18 +529,22 @@ class F_MCMC_distill(EP_MCMC):
         global_pred = 0.0
         var_sum = 0.0
 
+        #pred_list_prior = self.client_train[c].ensemble_inf(x,)
+
         for c in range(self.num_clients):
             pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
-                
+            
             #average to get p(y | x, D)
             # shape: batch_size x output_dim
             pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
-            pred_var = torch.var(pred_list, dim = 0, keepdims = False)
+
+            #the variance in the prediction is 1.0 (the homeoscedatic assumed variance) + bayesian variance
+            pred_var = 1.0 + torch.var(pred_list, dim = 0, keepdims = False)
 
             #assuming a uniform posterior
             global_pred += pred_mean/pred_var
             var_sum += 1/pred_var
-        
+            
         return global_pred/var_sum
 
 

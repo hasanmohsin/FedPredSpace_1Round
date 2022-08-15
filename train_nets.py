@@ -54,7 +54,7 @@ class cSGHMC:
         #hard-coded params
         self.num_epochs = hyperparams['epoch_per_client'] #24
         self.weight_decay = hyperparams['weight_decay'] #5e-4
-        self.datasize = hyperparams['datasize'] #60000
+        self.datasize = hyperparams['datasize']#/5 #60000
         self.batch_size = hyperparams['batch_size'] #100
         self.num_batch = int(self.datasize/self.batch_size) + 1
         self.init_lr = hyperparams['init_lr'] #0.1 #0.5
@@ -70,7 +70,11 @@ class cSGHMC:
         else:
             self.criterion = torch.nn.MSELoss()
         
-        self.temperature = 1/self.datasize
+        if hyperparams['temp'] == -1:
+            self.temperature = 1/self.datasize
+        else:
+            self.temperature = hyperparams['temp'] #1.0 #1/self.datasize #0.5#0.05#1/self.datasize#/60000#self.datasize
+        
         self.alpha = hyperparams['alpha'] #0.9
 
         self.max_samples = hyperparams['max_samples'] #15 #4#15
