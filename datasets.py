@@ -319,7 +319,7 @@ def get_airquality(batch_size, normalize = True):
 # ~2000 validation
 def get_power(batch_size, normalize=True):
     col1=['AT','V','AP','RH','PE']
-    df1 = pd.read_excel('~/projects/fed_func_space_1round/Dataset/CCPP/Folds5x2_pp.xlsx',header=None,skiprows=1, na_filter=True, 
+    df1 = pd.read_excel('./Dataset/CCPP/Folds5x2_pp.xlsx',header=None,skiprows=1, na_filter=True, 
                         names=col1)
     df1 = df1.dropna()
     col1 = df1.columns.tolist()
