@@ -1,0 +1,7 @@
+Experiment: Args Namespace(batch_size=100, dataset='mnist', epoch_per_client=1, g_lr=0.1, kd_epochs=1, kd_lr=0.0001, kd_optim_type='adam', lr=0.01, max_samples=6, mode='oneshot_fl_cs', net_type='fc', non_iid=0.0, num_clients=5, num_rounds=1, optim_type='sgdm', rho=1.0, save_dir='./results/', seed=1, weight_decay=0.0005)
+Global rounds completed: 0, test_acc: 79.68
+Client 0, test accuracy: 87.86 , 87.22
+Client 1, test accuracy: 87.42 , 88.56
+Client 2, test accuracy: 87.57 , 88.54
+Client 3, test accuracy: 87.82 , 85.69
+Client 4, test accuracy: 87.24 , 88.41

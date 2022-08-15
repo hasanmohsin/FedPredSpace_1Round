@@ -227,7 +227,7 @@ def main(args):
                                     traindata=train_data, distill_data = distill_data,
                                     num_rounds = 1,
                                     hyperparams = sgd_hyperparams, device=device, logger = logger,
-                                    non_iid = args.non_iid,
+                                    args=args, non_iid = args.non_iid,
                                     task = task)
         oneshot_fl.train(valloader=valloader)
     elif mode == "oneshot_fl_cs":
@@ -240,7 +240,7 @@ def main(args):
                                           traindata=train_data, distill_data=distill_data,
                                           num_rounds=1,
                                           hyperparams=sgd_hyperparams, device=device, logger=logger,
-                                          non_iid=args.non_iid,
+                                          args=args, non_iid=args.non_iid,
                                           task=task)
         oneshot_fl_cs.train(valloader=valloader)
     elif mode == "f_mcmc":
