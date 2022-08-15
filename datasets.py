@@ -314,6 +314,38 @@ def get_airquality(batch_size, normalize = True):
     )
     return trainloader, testloader, train_ds, df1
 
+## Power dataset
+# ~7000 training
+# ~2000 validation
+def get_power(batch_size, normalize=True):
+    col1=['AT','V','AP','RH','PE']
+    df1 = pd.read_excel('~/projects/fed_func_space_1round/Dataset/CCPP/Folds5x2_pp.xlsx',header=None,skiprows=1, na_filter=True, 
+                        names=col1)
+    df1 = df1.dropna()
+    col1 = df1.columns.tolist()
+
+    if normalize:
+        #df1 = (df1-df1.min())/(df1.max()-df1.min())
+        df1 = (df1 - df1.mean())/(df1.std()) #(df1-df1.min())/(df1.max()-df1.min())
+    
+    data=df1[col1]
+    target = data.pop('PE')
+
+    train_size = int(len(data.values) * 0.8)
+
+    train_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[:train_size, :]).float(), torch.Tensor(target.values[:train_size]).float())
+    test_ds = torch.utils.data.TensorDataset(torch.Tensor(data.values[train_size:, :]).float(), torch.Tensor(target.values[train_size:]).float())
+    #print((train_ds))
+    
+    # We shuffle with a buffer the same size as the dataset.
+    trainloader = torch.utils.data.DataLoader(
+        train_ds, batch_size, shuffle = True
+    )
+    testloader = torch.utils.data.DataLoader(
+        test_ds, batch_size, shuffle = False
+    )
+    return trainloader, testloader, train_ds, df1
+
 
 
 ## Does a non iid split on the airquality dataset,
