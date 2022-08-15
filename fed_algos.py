@@ -1008,7 +1008,7 @@ class ONESHOT_FL_CS:
         self.num_rounds = num_rounds
 
         self.task = task
-
+        self.onemodel = False
         if task == "classify":
             self.criterion = torch.nn.CrossEntropyLoss()
         else:
@@ -1053,10 +1053,11 @@ class ONESHOT_FL_CS:
         for c in range(self.num_clients):
             self.client_nets[c] = self.client_nets[c].eval()
             pred_logit = self.client_nets[c](x)
-            self.client_nets2[c] = self.client_nets2[c].eval()
-            pred_logit2 = self.client_nets2[c](x)
             client_pred.append(pred_logit.view(pred_logit.size(0), -1).max(dim=-1).indices)
-            client_pred.append(pred_logit2.view(pred_logit2.size(0), -1).max(dim=-1).indices)
+            if self.onemodel == False:
+                self.client_nets2[c] = self.client_nets2[c].eval()
+                pred_logit2 = self.client_nets2[c](x)
+                client_pred.append(pred_logit2.view(pred_logit2.size(0), -1).max(dim=-1).indices)
         pred_class = torch.mode(torch.transpose(torch.stack(client_pred), 0, 1)).values
         pred_dist = torch.zeros(pred_class.size(0), pred_logit.size(1))
         for i in range(x.size(0)):
@@ -1139,9 +1140,10 @@ class ONESHOT_FL_CS:
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
             PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
-            self.client_nets[client_num].load_state_dict(torch.load(PATH))
-            for i in range(self.epoch_per_client):
-                self.local_train(client_num)
+            #self.client_nets[client_num].load_state_dict(torch.load(PATH))
+            if self.onemodel == False:
+                for i in range(self.epoch_per_client):
+                    self.local_train(client_num)
         self.aggregate()
 
     def train(self, valloader):
@@ -1152,8 +1154,11 @@ class ONESHOT_FL_CS:
 
             for c in range(self.num_clients):
                 acc_c = self.get_acc(self.client_nets[c],valloader)
-                acc_c2 = self.get_acc(self.client_nets2[c],valloader)
-                utils.print_and_log("Client {}, test accuracy: {} , {}".format(c, acc_c, acc_c2), self.logger)
+                if self.onemodel == False:
+                    acc_c2 = self.get_acc(self.client_nets2[c],valloader)
+                    utils.print_and_log("Client {}, test accuracy: {} , {}".format(c, acc_c, acc_c2), self.logger)
+                else:
+                    utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
 
         utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
