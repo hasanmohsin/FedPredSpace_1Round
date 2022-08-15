@@ -103,6 +103,11 @@ def main(args):
         trainloader, valloader, train_data, df = datasets.get_winequality(batch_size=args.batch_size)
         out_dim = 1
         inp_dim = len(train_data[0][0])
+    elif args.dataset == "power":
+        task = "regression"
+        trainloader, valloader, train_data, df = datasets.get_power(batch_size=args.batch_size)
+        out_dim = 1
+        inp_dim = len(train_data[0][0])
 
     if task == "classify":
         out_dim = len(train_data.classes)
