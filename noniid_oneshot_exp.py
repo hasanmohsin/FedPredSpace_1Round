@@ -154,7 +154,7 @@ for non_iid in [0.0]: #, 0.3, 0.6,0.9]:
 
             #load client models
             for client_num in range(method.num_clients):
-                model_dir = "./results/models/models_fed_sgd_with_non_iid/" #"./models/"
+                model_dir = "./results/models/" #"./models/"
                 PATH = model_dir + dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_{}_noniid_seed_".format(non_iid) +str(seed) + "_client_"+str(client_num)
                 #print(PATH)
                 method.client_nets[client_num].load_state_dict(torch.load(PATH))
