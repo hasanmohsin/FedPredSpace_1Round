@@ -52,7 +52,7 @@ num_clients = 5
 num_rounds = 1
 mode = "teacher_oneshot_fl_cs" #"teacher_oneshot_fl"
 
-for non_iid in [0.0]: #, 0.3, 0.6,0.9]:
+for non_iid in [0.0, 0.3, 0.6,0.9]:
 
     if non_iid == 0.0:
         seeds = ["5","6","7","8","9","10","11","12","13","14","15"]
