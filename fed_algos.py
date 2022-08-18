@@ -151,6 +151,11 @@ class FedAvg:
     def train(self, valloader):
         for i in range(self.num_rounds):
             self.global_update_step()
+
+            #last round, save models before sending to clients
+            if i == self.num_rounds - 1:
+                self.save_models()
+
             self.global_to_clients()
             acc = self.get_acc(self.global_net, valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
@@ -159,7 +164,7 @@ class FedAvg:
         utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         
-        self.save_models()
+        #self.save_models()
         
         return
 
