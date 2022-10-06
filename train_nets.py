@@ -19,7 +19,31 @@ def sgd_train_step(net, optimizer, criterion, trainloader, device):
 
         count+=1
     return net, epoch_loss
-   
+ 
+
+def sgd_prox_train_step(net, g_net, reg, optimizer, criterion, trainloader, device):
+    epoch_loss = 0.0
+    count = 0
+    for x, y in trainloader:
+        x = x.to(device)
+        y = y.to(device)
+        
+        optimizer.zero_grad()
+
+        prox_term = 0.0
+        for w, w_t in zip(net.parameters(), g_net.parameters()):
+            prox_term += (w - w_t).norm(2)
+
+        pred_logits = net(x)
+        loss = criterion(pred_logits, y) + reg*prox_term
+        loss.backward()
+        optimizer.step()
+
+        epoch_loss += loss.item()
+
+        count+=1
+    return net, epoch_loss
+
 
 # training with regular SGD
 def sgd_train(net, lr, num_epochs, trainloader):
@@ -114,6 +138,10 @@ class cSGHMC:
             self.net.zero_grad()
             lr = self.adjust_learning_rate(epoch,batch_idx)
             outputs = self.net(inputs)
+
+            if self.task == "regression":
+                outputs = outputs.reshape(targets.shape)
+
             loss = self.criterion(outputs, targets)
             loss.backward()
             self.update_params(lr,epoch)
