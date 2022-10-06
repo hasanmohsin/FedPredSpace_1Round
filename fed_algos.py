@@ -168,6 +168,338 @@ class FedAvg:
         
         return
 
+
+class FedProx:
+    def __init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, hyperparams, logger, non_iid = 0.0, task = "classify"):
+
+        # lr for SGD
+        self.lr = hyperparams['lr']
+        self.g_lr = hyperparams['g_lr']
+        self.batch_size = hyperparams['batch_size']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.datasize = hyperparams['datasize']
+        self.optim_type = hyperparams['optim_type']
+        self.outdim = hyperparams['outdim']
+        self.device = hyperparams['device']
+        self.seed = hyperparams['seed']
+        self.model_save_dir = hyperparams['model_save_dir']
+        self.exp_id = hyperparams['exp_id']
+        self.save_dir = hyperparams['save_dir']
+
+        self.reg_global = hyperparams['reg_global']
+
+        self.logger = logger
+
+        self.all_data = traindata
+
+        self.num_clients = num_clients
+
+        self.task = task
+
+        #initialize nets and data for all clients
+        self.client_nets = []
+        self.optimizers = []
+
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset = traindata, 
+                                                                                        num_clients = num_clients, 
+                                                                                        client_data_size = (self.datasize//num_clients), 
+                                                                                        batch_size = self.batch_size, 
+                                                                                        shuffle=False, non_iid_frac = non_iid,
+                                                                                        outdim=self.outdim)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
+
+        for c in range(num_clients):
+            self.client_nets.append(copy.deepcopy(base_net))
+            
+            if self.optim_type == "sgdm":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr, momentum=0.9))
+            elif self.optim_type == "sgd":
+                 self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr))
+            elif self.optim_type == "adam":
+                self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr = self.lr))
+            else:
+                utils.print_and_log("Optimizer type {} unkown, defualting to vanilla SGD")
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr))
+
+        self.num_rounds = num_rounds
+
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+
+        #initial global net is same as client nets
+        self.global_net = copy.deepcopy(base_net)
+
+    def save_models(self):
+        save_dir = self.model_save_dir
+        save_name = self.exp_id + "_seed_"+str(self.seed)
+        c_save = save_dir + "/"+save_name 
+
+        utils.makedirs(save_dir)
+
+        for c in range(self.num_clients):
+            path = c_save + "_client_" + str(c)  
+            torch.save(self.client_nets[c].state_dict(), path)
+
+    #perform 1 epoch of updates on client_num
+    def local_update_step(self, client_num):
+        
+        c_dataloader = self.client_dataloaders[client_num]
+
+        #take optimization step regularized by global net
+        self.client_nets[client_num], loss = train_nets.sgd_prox_train_step(net = self.client_nets[client_num], 
+                                g_net = self.global_net,
+                                reg = self.reg_global,
+                                optimizer=self.optimizers[client_num],
+                                criterion = self.criterion,
+                                trainloader=c_dataloader, device = self.device)
+
+        print("Client {}, Loss: {}".format(client_num, loss))
+
+        return
+
+    #in aggregation step - average all models
+    def alt_aggregate(self):
+        global_state_dict = self.global_net.state_dict()
+
+        for layer in global_state_dict:
+            global_state_dict[layer] = 0*global_state_dict[layer]
+
+            #average over clients    
+            for c in range(self.num_clients):
+                global_state_dict[layer] += self.client_nets[c].state_dict()[layer]/self.num_clients
+
+        self.global_net.load_state_dict(global_state_dict)
+
+        return
+
+    #updates global net
+    def aggregate(self):
+        #in aggregation step - average all models
+        #global_v = 0.0 #torch.nn.utils.paramters_to_vector(self.global_net.parameters())
+
+        c_vectors = []
+
+        #average over clients    
+        for c in range(self.num_clients):
+                c_vector = torch.nn.utils.parameters_to_vector(self.client_nets[c].parameters()).detach()
+                c_vectors.append(torch.clone(c_vector))
+        c_vectors = torch.stack(c_vectors, dim=0)
+        global_v = torch.mean(c_vectors, dim=0)
+        
+        #load into global net
+        torch.nn.utils.vector_to_parameters(global_v, self.global_net.parameters())
+
+        return
+
+    def global_update_step(self):
+        local_infos = []
+        
+        for client_num in range(self.num_clients):
+            for i in range(self.epoch_per_client):
+                self.local_update_step(client_num)
+
+        self.aggregate()
+        
+        #self.aggregate()
+    
+    def global_to_clients(self):
+        for c in range(self.num_clients):
+            self.client_nets[c].load_state_dict(self.global_net.state_dict())
+
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            self.global_update_step()
+
+            #last round, save models before sending to clients
+            if i == self.num_rounds - 1:
+                self.save_models()
+
+            self.global_to_clients()
+            acc = self.get_acc(self.global_net, valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
+        
+        #save final results here
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        
+        #self.save_models()
+        
+        return
+
+class AdaptiveFL:
+    def __init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, hyperparams, logger, non_iid = 0.0, task = "classify"):
+
+        # lr for SGD
+        self.lr = hyperparams['lr']
+        self.g_lr = hyperparams['g_lr']
+        self.batch_size = hyperparams['batch_size']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.datasize = hyperparams['datasize']
+        self.optim_type = hyperparams['optim_type']
+        self.outdim = hyperparams['outdim']
+        self.device = hyperparams['device']
+        self.seed = hyperparams['seed']
+        self.model_save_dir = hyperparams['model_save_dir']
+        self.exp_id = hyperparams['exp_id']
+        self.save_dir = hyperparams['save_dir']
+
+        self.logger = logger
+
+        self.all_data = traindata
+
+        self.num_clients = num_clients
+
+        self.task = task
+
+        #initialize nets and data for all clients
+        self.client_nets = []
+        self.optimizers = []
+
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset = traindata, 
+                                                                                        num_clients = num_clients, 
+                                                                                        client_data_size = (self.datasize//num_clients), 
+                                                                                        batch_size = self.batch_size, 
+                                                                                        shuffle=False, non_iid_frac = non_iid,
+                                                                                        outdim=self.outdim)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
+
+        for c in range(num_clients):
+            self.client_nets.append(copy.deepcopy(base_net))
+            
+            if self.optim_type == "sgdm":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr, momentum=0.9))
+            elif self.optim_type == "sgd":
+                 self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr))
+            elif self.optim_type == "adam":
+                self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr = self.lr))
+            else:
+                utils.print_and_log("Optimizer type {} unkown, defualting to vanilla SGD")
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr = self.lr))
+
+        self.num_rounds = num_rounds
+
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+
+        self.global_net = copy.deepcopy(base_net)
+
+    def save_models(self):
+        save_dir = self.model_save_dir
+        save_name = self.exp_id + "_seed_"+str(self.seed)
+        c_save = save_dir + "/"+save_name 
+
+        utils.makedirs(save_dir)
+
+        for c in range(self.num_clients):
+            path = c_save + "_client_" + str(c)  
+            torch.save(self.client_nets[c].state_dict(), path)
+
+    #perform 1 epoch of updates on client_num
+    def local_update_step(self, client_num):
+        
+        c_dataloader = self.client_dataloaders[client_num]
+
+        self.client_nets[client_num], loss = train_nets.sgd_train_step(net = self.client_nets[client_num],
+                                 optimizer=self.optimizers[client_num],
+                                 criterion = self.criterion,
+                                 trainloader=c_dataloader, device = self.device)
+
+        print("Client {}, Loss: {}".format(client_num, loss))
+
+        return
+
+    #in aggregation step - average all models
+    def alt_aggregate(self):
+        global_state_dict = self.global_net.state_dict()
+
+        for layer in global_state_dict:
+            global_state_dict[layer] = 0*global_state_dict[layer]
+
+            #average over clients    
+            for c in range(self.num_clients):
+                global_state_dict[layer] += self.client_nets[c].state_dict()[layer]/self.num_clients
+
+        self.global_net.load_state_dict(global_state_dict)
+
+        return
+
+    def aggregate(self):
+        #in aggregation step - average all models
+        #global_v = 0.0 #torch.nn.utils.paramters_to_vector(self.global_net.parameters())
+
+        c_vectors = []
+
+        #average over clients    
+        for c in range(self.num_clients):
+                c_vector = torch.nn.utils.parameters_to_vector(self.client_nets[c].parameters()).detach()
+                c_vectors.append(torch.clone(c_vector))
+        c_vectors = torch.stack(c_vectors, dim=0)
+        global_v = torch.mean(c_vectors, dim=0)
+        
+        #load into global net
+        torch.nn.utils.vector_to_parameters(global_v, self.global_net.parameters())
+
+        return
+
+    def global_update_step(self):
+        local_infos = []
+        
+        for client_num in range(self.num_clients):
+            for i in range(self.epoch_per_client):
+                self.local_update_step(client_num)
+
+        self.aggregate()
+        
+        #self.aggregate()
+    
+    def global_to_clients(self):
+        for c in range(self.num_clients):
+            self.client_nets[c].load_state_dict(self.global_net.state_dict())
+
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            self.global_update_step()
+
+            #last round, save models before sending to clients
+            if i == self.num_rounds - 1:
+                self.save_models()
+
+            self.global_to_clients()
+            acc = self.get_acc(self.global_net, valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
+        
+        #save final results here
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        
+        #self.save_models()
+        
+        return
+
 class EP_MCMC:
     def __init__(self, num_clients, base_net, 
                 traindata, 
@@ -1071,7 +1403,7 @@ class ONESHOT_FL_CS:
         pred_dist = torch.zeros(pred_class.size(0), pred_logit.size(1))
         for i in range(x.size(0)):
             pred_dist[i][pred_class[i]] = 1
-        return pred_dist
+        return pred_dist.to(self.device)
 
     def predict_regr(self, x):
         client_pred = []
@@ -1083,7 +1415,7 @@ class ONESHOT_FL_CS:
             client_pred.append(pred)
             client_pred.append(pred2)
 
-        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
+        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False).to(self.device)
 
 
     def predict(self, x):

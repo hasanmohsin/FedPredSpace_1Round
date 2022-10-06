@@ -189,6 +189,47 @@ def main(args):
                                         task = task)
         fed_avg_trainer.train(valloader)
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+    elif mode == "fed_prox":
+        sgd_hyperparams['device'] = device
+        sgd_hyperparams['reg_global'] = args.prox_reg
+
+        fed_avg_trainer = fed_algos.FedProx(num_clients = args.num_clients, 
+                                        base_net = base_net, 
+                                        traindata = train_data, 
+                                        num_rounds = args.num_rounds, 
+                                        hyperparams = sgd_hyperparams, 
+                                        logger = logger,
+                                        non_iid = args.non_iid,
+                                        task = task)
+        fed_avg_trainer.train(valloader)
+        #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+    elif mode == "adapt_fl":
+        sgd_hyperparams['device'] = device
+
+        fed_avg_trainer = fed_algos.FedAvg(num_clients = args.num_clients, 
+                                        base_net = base_net, 
+                                        traindata = train_data, 
+                                        num_rounds = args.num_rounds, 
+                                        hyperparams = sgd_hyperparams, 
+                                        logger = logger,
+                                        non_iid = args.non_iid,
+                                        task = task)
+        fed_avg_trainer.train(valloader)
+        #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+    elif mode == "fed_be":
+        sgd_hyperparams['device'] = device
+
+        fed_avg_trainer = fed_algos.FedAvg(num_clients = args.num_clients, 
+                                        base_net = base_net, 
+                                        traindata = train_data, 
+                                        num_rounds = args.num_rounds, 
+                                        hyperparams = sgd_hyperparams, 
+                                        logger = logger,
+                                        non_iid = args.non_iid,
+                                        task = task)
+        fed_avg_trainer.train(valloader)
+        #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+
     elif mode == "fed_pa":
         #add hyperparameter
         mcmc_hyperparams['rho'] = args.rho #1.0
@@ -350,6 +391,9 @@ if __name__ == '__main__':
     #for later - setting up train/test split
     #parser.add_argument('--ntrain', type=int, default=500)
     #parser.add_argument('--train_percent', type=float, default=0.8)
+
+    #for FedProx
+    parser.add_argument('--prox_reg', type=float, default=1e-2)
 
     args = parser.parse_args()
     
