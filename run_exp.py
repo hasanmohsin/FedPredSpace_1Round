@@ -168,6 +168,33 @@ def main(args):
     lens = [len_data - len_more_data, len_more_data]
     train_data, distill_data = torch.utils.data.random_split(train_data, lens)
 
+    # setup a validation set for hyperparameter tuning
+    VALIDATE = True
+
+    if VALIDATE:
+        #if not a distillation dataset, use distill data for validation
+        if mode not in ["distill_f_mcmc", "oneshot_fl", "oneshot_fl_cs"]: 
+            val_data_tuning = distill_data
+
+            #may want to change pin_memory to false if not using cuda
+            valloader_tuning = torch.utils.data.DataLoader(val_data_tuning, 
+                                                            batch_size=args.batch_size, 
+                                                            shuffle=False, pin_memory=True, 
+                                                            num_workers=3)
+
+        # if is a distillation algo, use half of distill_data for tuning (for overall 10% val data size)
+        # for testing, we switch back to using all of distillation set
+        else:
+            len_d_data = distill_data.__len__()
+            len_d_more_data = int(round(len_d_data*0.5))
+            lens = [len_d_data - len_d_more_data, len_d_more_data]
+            distill_data, val_data_tuning = torch.utils.data.random_split(distill_data, lens)
+
+            valloader_tuning = torch.utils.data.DataLoader(val_data_tuning, 
+                                                            batch_size=args.batch_size, 
+                                                            shuffle=False, pin_memory=True, 
+                                                            num_workers=3)
+
     ################################
     # TRAINING ALGORITHMS
     ################################
@@ -201,7 +228,11 @@ def main(args):
                                         logger = logger,
                                         non_iid = args.non_iid,
                                         task = task)
-        fed_avg_trainer.train(valloader)
+
+        if VALIDATE:
+            fed_avg_trainer.train(valloader_tuning)
+        else:
+            fed_avg_trainer.train(valloader)
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
     elif mode == "adapt_fl":
         sgd_hyperparams['device'] = device
