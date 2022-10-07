@@ -401,6 +401,11 @@ class AdaptiveFL:
 
         self.global_net = copy.deepcopy(base_net)
 
+        #a network for storing delta
+        self.delta = copy.deepcopy(base_net)
+
+        self.global_optimizer = torch.optim.Adam(self.global_net.parameters(), lr = self.g_lr)
+
     def save_models(self):
         save_dir = self.model_save_dir
         save_name = self.exp_id + "_seed_"+str(self.seed)
@@ -425,22 +430,26 @@ class AdaptiveFL:
         print("Client {}, Loss: {}".format(client_num, loss))
 
         return
+    
+    #set delta as the gradient in the global optimizer
+    def global_opt(self, g_delta):
+        self.global_optimizer.zero_grad()
 
-    #in aggregation step - average all models
-    def alt_aggregate(self):
-        global_state_dict = self.global_net.state_dict()
+        #set global optimizer grad
+        torch.nn.utils.vector_to_parameters(g_delta, self.delta.parameters())
 
-        for layer in global_state_dict:
-            global_state_dict[layer] = 0*global_state_dict[layer]
+        #copy gradient data over to global net
+        for p, g in zip(self.global_net.parameters(), self.delta.parameters()):
+            #print("p parmaeter ", p)
+            #print("p grad paramter", p.grad)
+            #print("p grad param.data ", p.grad.data)
+            p.grad = g.data
 
-            #average over clients    
-            for c in range(self.num_clients):
-                global_state_dict[layer] += self.client_nets[c].state_dict()[layer]/self.num_clients
+        #update
+        self.global_optimizer.step()
 
-        self.global_net.load_state_dict(global_state_dict)
-
-        return
-
+        return 
+    
     def aggregate(self):
         #in aggregation step - average all models
         #global_v = 0.0 #torch.nn.utils.paramters_to_vector(self.global_net.parameters())
@@ -452,10 +461,14 @@ class AdaptiveFL:
                 c_vector = torch.nn.utils.parameters_to_vector(self.client_nets[c].parameters()).detach()
                 c_vectors.append(torch.clone(c_vector))
         c_vectors = torch.stack(c_vectors, dim=0)
-        global_v = torch.mean(c_vectors, dim=0)
+        global_vec = torch.nn.utils.parameters_to_vector(self.global_net.parameters()).detach()
+        delta = torch.mean(c_vectors, dim=0) - global_vec
         
         #load into global net
-        torch.nn.utils.vector_to_parameters(global_v, self.global_net.parameters())
+        #torch.nn.utils.vector_to_parameters(delta, self.global_net.parameters())
+
+        #updates global model based on delta
+        self.global_opt(g_delta = delta)
 
         return
 
