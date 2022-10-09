@@ -1807,7 +1807,7 @@ class FedBE:
         
         #posterior samples
         self.post_samples = []
-        self.num_samples = 5 #set to number of clients?
+        self.num_samples = 10 #set to number of clients (so we sample an equivalent number of clients)?
 
     def local_train(self, client_num):
         c_dataloader = self.client_dataloaders[client_num]
@@ -1822,83 +1822,84 @@ class FedBE:
     #####################################
     #  FOR ensemble inference
     ####################################
-    def get_client_samples_as_vec(self, client_num):
-        client_samples = self.client_train[client_num].sampled_nets
+
+    #returns list of client nets as vectors
+    def get_client_nets_as_vec(self):
         c_vectors = []
-        for sample in client_samples:
-            sample_net = copy.deepcopy(self.base_net)
-            sample_net.load_state_dict(sample)
-            c_vec = torch.nn.utils.parameters_to_vector(sample_net.parameters())
+        for c in range(self.num_clients):
+            c_vec = torch.nn.utils.parameters_to_vector(self.client_nets[c].parameters())
             c_vectors.append(c_vec)
         c_vectors = torch.stack(c_vectors, dim=0)
 
         return c_vectors
 
-    def get_client_sample_mean_cov(self, client_num):
-        #a list of sampled nets from training client
-        c_vectors = self.get_client_samples_as_vec(client_num)
+    def get_client_mean_cov(self):
+        c_vectors = self.get_client_nets_as_vec()
         mean = torch.mean(c_vectors, dim=0)
         
         #too memory intensive - approximate with diagonal matrix
         #cov = torch.Tensor(np.cov((c_vectors).detach().numpy().T))
+        
+        #cov matrix has this vector as diagonal
+        cov = torch.mean((c_vectors - mean)**2, dim = 0)
 
-        cov = torch.var(c_vectors, dim = 0)#.diag()
         return mean, cov
+
+    def vec_to_net(self,vec):
+        net = copy.deepcopy(self.base_net)
+        torch.nn.utils.vector_to_parameters(vec, net.parameters())
+        return net
 
     #calculates mean and variance of posterior, based
     #on client models
     def get_post_samples(self):
+        #posterior samples = {client nets, mean net, sampled gaussian nets}
         
-        global_var = 0.0
-        global_mean = 0.0
+        #reset list of posterior samples
+        self.post_samples = []
 
-        #average over clients    
+        #1 - client nets
         for c in range(self.num_clients):
-            mean, cov = self.get_client_sample_mean_cov(c)
-            client_prec = 1/cov #torch.inv(cov)
-            global_prec += client_prec
-            global_mean += client_prec * mean #client_prec@mean
-        
-        global_mean = (1/global_prec) * global_mean #torch.inv(global_prec) @ global_mean
-        global_var = (1/global_prec)
+            self.post_samples.append(copy.deepcopy(self.client_nets[c]))
 
-        dist = torch.distributions.Normal(global_mean, global_var.reshape(1, -1))
+        #2 - mean net
+        mean, cov = self.get_client_mean_cov()
+
+        self.post_samples.append(self.vec_to_net(mean))
+
+        #3 - sampled gaussian nets
+        dist = torch.distributions.Normal(mean, cov.reshape(1, -1))
         dist = torch.distributions.independent.Independent(dist, 1)
         #dist = torch.distributions.MultivariateNormal(loc = global_mean, precision_matrix=global_prec)
-        global_samples = dist.sample([self.num_g_samples])
+        global_samples = dist.sample([self.num_samples])
+ 
         
-        #print("global mean shape: ", global_mean.shape)
-        #print("global var shape: ", global_var.shape)
-        #print("global samples shape: ", global_samples.shape)
-    
-        self.global_train.sampled_nets = []
-        
-        for s in range(self.num_g_samples):
+        for s in range(self.num_samples):
             sample = global_samples[s,0,:]
+            self.post_samples.append(self.vec_to_net(sample))
 
-            #load into global net
-            torch.nn.utils.vector_to_parameters(sample, self.global_train.net.parameters())
-            self.global_train.sampled_nets.append(copy.deepcopy(self.global_train.net.state_dict()))
 
 
     # prediction on input x
     def predict_classify(self, x):
-        client_pred = []
-        for c in range(self.num_clients):
-            self.client_nets[c] = self.client_nets[c].eval()
-            pred_logit = self.client_nets[c](x)
+        preds = []
+        for m in range(len(self.post_samples)):
+            self.post_samples[m] = self.post_samples[m].eval()
+            pred_logit = self.post_samples[m](x)
 
-            client_pred.append(pred_logit)
-        return torch.mean(torch.stack(client_pred), axis = 0)
+            #append p(y|x, m_i) - for that model m_i
+            preds.append(torch.nn.functional.softmax(pred_logit, dim=1))
+        return torch.mean(torch.stack(preds), axis = 0)
 
     def predict_regr(self, x):
-        client_pred = []
-        for c in range(self.num_clients):
-            self.client_nets[c] = self.client_nets[c].eval()
-            pred = self.client_nets[c](x)
-            client_pred.append(pred)
+        preds = []
+        for m in range(len(self.post_samples)):
+            self.post_samples[m] = self.post_samples[m].eval()
+            pred = self.post_samples[m](x)
+            preds.append(pred)
 
-        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
+        #mean of p(y|x) is avg of means
+        return torch.mean(torch.stack(preds), dim=0, keepdims=False)
 
 
     def predict(self, x):
@@ -1908,6 +1909,9 @@ class FedBE:
             return self.predict_regr(x)
 
     def aggregate(self):
+        #get new set of posterior samples
+        self.get_post_samples()
+
         self.distill.set_student(self.client_nets[0].state_dict())
 
         #train the student via kd
