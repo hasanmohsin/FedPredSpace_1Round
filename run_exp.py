@@ -237,6 +237,7 @@ def main(args):
         
     elif mode == "adapt_fl":
         sgd_hyperparams['device'] = device
+        sgd_hyperparams['tau'] = args.tau #10e-3
 
         fed_avg_trainer = fed_algos.AdaptiveFL(num_clients = args.num_clients, 
                                         base_net = base_net, 
@@ -253,18 +254,21 @@ def main(args):
         
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
     elif mode == "fed_be":
-        sgd_hyperparams['device'] = device
-
-        fed_avg_trainer = fed_algos.FedAvg(num_clients = args.num_clients, 
-                                        base_net = base_net, 
-                                        traindata = train_data, 
-                                        num_rounds = args.num_rounds, 
-                                        hyperparams = sgd_hyperparams, 
-                                        logger = logger,
-                                        non_iid = args.non_iid,
-                                        task = task)
-        fed_avg_trainer.train(valloader)
-        #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
+        #len_data = train_data.__len__()
+        #len_more_data = int(round(len_data*0.2))
+        #lens = [len_data - len_more_data, len_more_data]
+        #train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+        sgd_hyperparams['kd_lr'] = args.kd_lr
+        sgd_hyperparams['kd_optim_type'] = args.kd_optim_type
+        sgd_hyperparams['kd_epochs'] = args.kd_epochs
+        oneshot_fl = fed_algos.FedBE(num_clients = args.num_clients,
+                                    base_net = base_net,
+                                    traindata=train_data, distill_data = distill_data,
+                                    num_rounds = 1,
+                                    hyperparams = sgd_hyperparams, device=device, logger = logger,
+                                    args=args, non_iid = args.non_iid,
+                                    task = task)
+        oneshot_fl.train(valloader=valloader)
 
     elif mode == "fed_pa":
         #add hyperparameter
@@ -430,6 +434,9 @@ if __name__ == '__main__':
 
     #for FedProx
     parser.add_argument('--prox_reg', type=float, default=1e-2)
+
+    #for adaptive FL (fedYogi)
+    parser.add_argument('--tau', type= float, default = 10e-3)
 
     args = parser.parse_args()
     

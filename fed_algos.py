@@ -400,9 +400,16 @@ class AdaptiveFL:
             self.criterion = torch.nn.MSELoss()
 
         self.global_net = copy.deepcopy(base_net)
+        self.g_vec = torch.nn.utils.parameters_to_vector(self.global_net.parameters()).detach()
+        
+        # parameters for server optimization
+        
+        self.g_v = torch.zeros_like(self.g_vec)
+        self.g_momentum = torch.zeros_like(self.g_vec)
 
-        #a network for storing delta
-        self.delta = copy.deepcopy(base_net)
+        self.tau = hyperparams['tau'] #10e-3
+        self.g_beta1 = 0.9
+        self.g_beta2 = 0.99
 
         self.global_optimizer = torch.optim.Adam(self.global_net.parameters(), lr = self.g_lr)
 
@@ -450,6 +457,18 @@ class AdaptiveFL:
 
         return 
     
+    def fed_yogi_update(self, g_delta):
+        self.g_momentum = self.g_beta1 * self.g_momentum + (1-self.g_beta1) * g_delta
+        self.g_v = self.g_v - (1 - self.g_beta2) * (g_delta**2) * torch.sign( self.g_v - g_delta**2 )       
+    
+        self.g_vec = torch.nn.utils.parameters_to_vector(self.global_net.parameters()).detach()
+        self.g_vec = self.g_vec + self.g_lr * self.g_momentum/( torch.sqrt(self.g_v) + self.tau )
+        
+        #save to global net
+        torch.nn.utils.vector_to_parameters(self.g_vec, self.global_net.parameters())
+
+        return
+
     def aggregate(self):
         #in aggregation step - average all models
         #global_v = 0.0 #torch.nn.utils.paramters_to_vector(self.global_net.parameters())
@@ -464,11 +483,7 @@ class AdaptiveFL:
         global_vec = torch.nn.utils.parameters_to_vector(self.global_net.parameters()).detach()
         delta = torch.mean(c_vectors, dim=0) - global_vec
         
-        #load into global net
-        #torch.nn.utils.vector_to_parameters(delta, self.global_net.parameters())
-
-        #updates global model based on delta
-        self.global_opt(g_delta = delta)
+        self.fed_yogi_update(g_delta = delta)
 
         return
 
@@ -481,7 +496,6 @@ class AdaptiveFL:
 
         self.aggregate()
         
-        #self.aggregate()
     
     def global_to_clients(self):
         for c in range(self.num_clients):
@@ -507,8 +521,7 @@ class AdaptiveFL:
         
         #save final results here
         utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
-        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
-        
+
         #self.save_models()
         
         return
@@ -1516,6 +1529,7 @@ class ONESHOT_FL_CS:
 
         utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
+
 class ONESHOT_FL:
     def __init__(self, num_clients, base_net,
                  traindata, distill_data,
@@ -1714,4 +1728,271 @@ class ONESHOT_FL:
         return
 
 
+
+class FedBE:
+    def __init__(self, num_clients, base_net,
+                 traindata, distill_data,
+                 num_rounds,
+                 hyperparams, device, args,logger, non_iid=0.0, task="classify"):
+        self.logger = logger
+        self.all_data = traindata
+        self.lr = hyperparams['lr']
+        self.g_lr = hyperparams['g_lr']
+        self.device = device
+        self.num_clients = num_clients
+        self.datasize = copy.deepcopy(hyperparams['datasize'])
+        self.batch_size = hyperparams['batch_size']
+        self.kdlr = hyperparams['kd_lr']
+        self.kdopt = hyperparams['kd_optim_type']
+        self.kdepoch = hyperparams['kd_epochs']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.outdim = hyperparams['outdim']
+        self.optim_type = hyperparams['optim_type']
+        self.seed = hyperparams['seed']
+        self.args = args
+        # initialize nets and data for all clients
+        self.client_nets = []
+        self.optimizers = []
+
+        self.exp_id = hyperparams['exp_id']
+        self.save_dir = hyperparams['save_dir']
+
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset=traindata,
+                                                                                   num_clients=num_clients,
+                                                                                   client_data_size=(
+                                                                                               self.datasize // num_clients),
+                                                                                   batch_size=self.batch_size,
+                                                                                   shuffle=False, non_iid_frac=non_iid,
+                                                                                   outdim=self.outdim)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
+
+        for c in range(num_clients):
+            self.client_nets.append(copy.deepcopy(base_net))
+
+            if self.optim_type == "sgdm":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr, momentum=0.9))
+            elif self.optim_type == "sgd":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr))
+            elif self.optim_type == "adam":
+                self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr=self.lr))
+            else:
+                utils.print_and_log("Optimizer type {} unkown, defualting to vanilla SGD")
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr))
+
+        self.num_rounds = num_rounds
+
+        self.task = task
+
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+
+        self.global_net = copy.deepcopy(base_net)
+        self.base_net = base_net
+
+
+        distill_loader = torch.utils.data.DataLoader(distill_data,
+                                                batch_size=self.batch_size, shuffle=True,
+                                                pin_memory=True)
+        self.student = copy.copy(base_net)
+        self.distill = kd.KD(teacher=self,
+                             student=self.student, lr=self.kdlr,
+                             device=self.device,
+                             train_loader=distill_loader,
+                             kd_optim_type = self.kdopt
+                             )
+        
+        #posterior samples
+        self.post_samples = []
+        self.num_samples = 5 #set to number of clients?
+
+    def local_train(self, client_num):
+        c_dataloader = self.client_dataloaders[client_num]
+
+        self.client_nets[client_num], loss = train_nets.sgd_train_step(net=self.client_nets[client_num],
+                                                                       optimizer=self.optimizers[client_num],
+                                                                       criterion=self.criterion,
+                                                                       trainloader=c_dataloader, device=self.device)
+
+        print("Client {}, Loss: {}".format(client_num, loss))
+
+    #####################################
+    #  FOR ensemble inference
+    ####################################
+    def get_client_samples_as_vec(self, client_num):
+        client_samples = self.client_train[client_num].sampled_nets
+        c_vectors = []
+        for sample in client_samples:
+            sample_net = copy.deepcopy(self.base_net)
+            sample_net.load_state_dict(sample)
+            c_vec = torch.nn.utils.parameters_to_vector(sample_net.parameters())
+            c_vectors.append(c_vec)
+        c_vectors = torch.stack(c_vectors, dim=0)
+
+        return c_vectors
+
+    def get_client_sample_mean_cov(self, client_num):
+        #a list of sampled nets from training client
+        c_vectors = self.get_client_samples_as_vec(client_num)
+        mean = torch.mean(c_vectors, dim=0)
+        
+        #too memory intensive - approximate with diagonal matrix
+        #cov = torch.Tensor(np.cov((c_vectors).detach().numpy().T))
+
+        cov = torch.var(c_vectors, dim = 0)#.diag()
+        return mean, cov
+
+    #calculates mean and variance of posterior, based
+    #on client models
+    def get_post_samples(self):
+        
+        global_var = 0.0
+        global_mean = 0.0
+
+        #average over clients    
+        for c in range(self.num_clients):
+            mean, cov = self.get_client_sample_mean_cov(c)
+            client_prec = 1/cov #torch.inv(cov)
+            global_prec += client_prec
+            global_mean += client_prec * mean #client_prec@mean
+        
+        global_mean = (1/global_prec) * global_mean #torch.inv(global_prec) @ global_mean
+        global_var = (1/global_prec)
+
+        dist = torch.distributions.Normal(global_mean, global_var.reshape(1, -1))
+        dist = torch.distributions.independent.Independent(dist, 1)
+        #dist = torch.distributions.MultivariateNormal(loc = global_mean, precision_matrix=global_prec)
+        global_samples = dist.sample([self.num_g_samples])
+        
+        #print("global mean shape: ", global_mean.shape)
+        #print("global var shape: ", global_var.shape)
+        #print("global samples shape: ", global_samples.shape)
+    
+        self.global_train.sampled_nets = []
+        
+        for s in range(self.num_g_samples):
+            sample = global_samples[s,0,:]
+
+            #load into global net
+            torch.nn.utils.vector_to_parameters(sample, self.global_train.net.parameters())
+            self.global_train.sampled_nets.append(copy.deepcopy(self.global_train.net.state_dict()))
+
+
+    # prediction on input x
+    def predict_classify(self, x):
+        client_pred = []
+        for c in range(self.num_clients):
+            self.client_nets[c] = self.client_nets[c].eval()
+            pred_logit = self.client_nets[c](x)
+
+            client_pred.append(pred_logit)
+        return torch.mean(torch.stack(client_pred), axis = 0)
+
+    def predict_regr(self, x):
+        client_pred = []
+        for c in range(self.num_clients):
+            self.client_nets[c] = self.client_nets[c].eval()
+            pred = self.client_nets[c](x)
+            client_pred.append(pred)
+
+        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
+
+
+    def predict(self, x):
+        if self.task == "classify":
+            return self.predict_classify(x)
+        else:
+            return self.predict_regr(x)
+
+    def aggregate(self):
+        self.distill.set_student(self.client_nets[0].state_dict())
+
+        #train the student via kd
+        self.distill.train(num_epochs = self.kdepoch)
+        self.student = self.distill.student
+        return
+    ######################################################################################
+
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
+            print(PATH)
+            self.client_nets[client_num].load_state_dict(torch.load(PATH))
+        self.aggregate()
+
+    def global_update_step(self):
+        for client_num in range(self.num_clients):
+            for i in range(self.epoch_per_client):
+                self.local_train(client_num)
+        self.aggregate()
+
+    def test_classify(self, testloader):
+        total = 0
+        correct = 0
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = self.predict(x)
+
+            _, pred_class = torch.max(pred, 1)
+
+            total += y.size(0)
+            correct += (pred_class == y).sum().item()
+
+        acc = 100 * correct / total
+        print("Accuracy on test set: ", acc)
+        return acc
+
+    def test_mse(self, testloader):
+        total_loss = 0.0
+        criterion = torch.nn.MSELoss()
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            pred = self.predict(x)
+
+            pred = pred.reshape(y.shape)
+            total_loss += criterion(pred, y).item()
+
+        print("MSE on test set: ", total_loss)
+        return total_loss
+
+    def test_acc(self, testloader):
+        if self.task == "classify":
+            return self.test_classify(testloader)
+        else:
+            return self.test_mse(testloader)
+
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            self.global_update_step()
+            #self.global_update_step_trained_clients()
+            acc = self.distill.test_acc(valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
+
+            for c in range(self.num_clients):
+                acc_c = self.get_acc(self.client_nets[c],valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+
+        #teacher acc
+        teacher_acc = self.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}".format(i, teacher_acc), self.logger)
+        utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"))
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        return
 
