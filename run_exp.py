@@ -169,7 +169,7 @@ def main(args):
     train_data, distill_data = torch.utils.data.random_split(train_data, lens)
 
     # setup a validation set for hyperparameter tuning
-    VALIDATE = True
+    VALIDATE = False
 
     if VALIDATE:
         #if not a distillation dataset, use distill data for validation

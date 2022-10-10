@@ -1754,6 +1754,8 @@ class FedBE:
         self.client_nets = []
         self.optimizers = []
 
+        self.model_save_dir = hyperparams['model_save_dir']
+
         self.exp_id = hyperparams['exp_id']
         self.save_dir = hyperparams['save_dir']
 
@@ -1979,12 +1981,26 @@ class FedBE:
         else:
             return utils.regr_acc(net, valloader)
 
+    def save_models(self):
+        save_dir = self.model_save_dir
+        save_name = self.exp_id + "_seed_"+str(self.seed)
+        c_save = save_dir + "/"+save_name 
+
+        utils.makedirs(save_dir)
+
+        for c in range(self.num_clients):
+            path = c_save + "_client_" + str(c)  
+            torch.save(self.client_nets[c].state_dict(), path)
+
     def train(self, valloader):
         for i in range(self.num_rounds):
             self.global_update_step()
             #self.global_update_step_trained_clients()
             acc = self.distill.test_acc(valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
+
+            #save client models (the global model is not sent to clients in this version, it is for 1 round only)
+            self.save_models()
 
             for c in range(self.num_clients):
                 acc_c = self.get_acc(self.client_nets[c],valloader)
@@ -1996,7 +2012,7 @@ class FedBE:
         teacher_acc = self.test_acc(valloader)
         utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}".format(i, teacher_acc), self.logger)
         utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
-                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"))
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "fed_be", target_mode="teacher_fed_be"))
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
