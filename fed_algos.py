@@ -1375,7 +1375,7 @@ class ONESHOT_FL_CS:
         self.num_rounds = num_rounds
 
         self.task = task
-        self.onemodel = False
+        self.onemodel = True #False
         if task == "classify":
             self.criterion = torch.nn.CrossEntropyLoss()
         else:
@@ -1506,8 +1506,8 @@ class ONESHOT_FL_CS:
             return utils.regr_acc(net, valloader)
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
-            #self.client_nets[client_num].load_state_dict(torch.load(PATH))
+            PATH = self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            self.client_nets[client_num].load_state_dict(torch.load(PATH))
             if self.onemodel == False:
                 for i in range(self.epoch_per_client):
                     self.local_train(client_num)
@@ -1650,7 +1650,7 @@ class ONESHOT_FL:
         return
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
+            PATH = self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             print(PATH)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
         self.aggregate()
@@ -1708,8 +1708,8 @@ class ONESHOT_FL:
 
     def train(self, valloader):
         for i in range(self.num_rounds):
-            self.global_update_step()
-            #self.global_update_step_trained_clients()
+            #self.global_update_step()
+            self.global_update_step_trained_clients()
             acc = self.distill.test_acc(valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
 
