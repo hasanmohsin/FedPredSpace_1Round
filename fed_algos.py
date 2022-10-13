@@ -1530,6 +1530,12 @@ class ONESHOT_FL_CS:
                     utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
 
         utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+
+        teacher_acc = self.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}".format(i, teacher_acc), self.logger)
+        utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl_cs", target_mode="teacher_oneshot_fl_cs"))
+
         return
 
 class ONESHOT_FL:
