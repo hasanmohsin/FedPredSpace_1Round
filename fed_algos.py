@@ -1508,7 +1508,7 @@ class ONESHOT_FL_CS:
             return utils.regr_acc(net, valloader)
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH = self.model_save_dir + "/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            PATH =  "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
             if self.onemodel == False:
                 for i in range(self.epoch_per_client):
@@ -1653,7 +1653,7 @@ class ONESHOT_FL:
         return
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH = self.model_save_dir + "/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            PATH = "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             print(PATH)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
         self.aggregate()
