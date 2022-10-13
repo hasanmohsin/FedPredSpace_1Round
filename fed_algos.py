@@ -1337,6 +1337,8 @@ class ONESHOT_FL_CS:
         self.optim_type = hyperparams['optim_type']
         self.seed = hyperparams['seed']
 
+        self.model_save_dir = hyperparams['model_save_dir']
+
         # initialize nets and data for all clients
         self.client_nets = []
         self.client_nets2 = []
@@ -1506,7 +1508,7 @@ class ONESHOT_FL_CS:
             return utils.regr_acc(net, valloader)
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH = self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            PATH = self.model_save_dir + "/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
             if self.onemodel == False:
                 for i in range(self.epoch_per_client):
@@ -1557,6 +1559,7 @@ class ONESHOT_FL:
 
         self.exp_id = hyperparams['exp_id']
         self.save_dir = hyperparams['save_dir']
+        self.model_save_dir = hyperparams['model_save_dir']
 
         if non_iid > 0.0:
             self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset=traindata,
@@ -1650,7 +1653,7 @@ class ONESHOT_FL:
         return
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH = self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            PATH = self.model_save_dir + "/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             print(PATH)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
         self.aggregate()
