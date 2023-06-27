@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 import pickle
+import tensorflow_probability as tfp
 
 device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
 
@@ -128,3 +129,128 @@ def seq_split(dataset, lengths, generator = torch.default_generator):
     indices_sort, _ = torch.sort(torch.randperm(sum(lengths), generator=generator))
     indices = indices_sort.tolist()
     return [torch.utils.data.Subset(dataset, indices[offset - length : offset]) for offset, length in zip(torch._utils._accumulate(lengths), lengths)]
+
+
+
+# for evaluation of model calibration
+
+#calculate expected calibration error for classification
+def test_ece(model, testloader, device, model_type = "ensemble"):
+    acc = [] #1 if accurate, 0 if not accurate
+    conf = []
+    gt = []
+
+    #first iterate thru all points in test loader, gathering each points 
+    # accuracy and confidence
+    for batch_idx, (x,y) in enumerate(testloader):
+        x = x.to(device)
+        y = y.to(device)
+
+        if model_type == "ensemble":
+            pred = model.predict(x)
+        else:
+            pred = model(x)
+            pred = torch.functional.F.softmax(pred)
+
+        confidence, pred_class = torch.max(pred, 1)    
+
+        correct = (pred_class == y).sum().item()
+
+        if batch_idx == 0:
+            #acc = np.array(correct)
+            logits = np.log(pred.detach().cpu().numpy())
+            gt = y.detach().cpu().numpy()
+        else:
+            #acc = np.concatenate((acc, correct), 0)
+            #print(confidence)
+            logits = np.concatenate((logits, np.log(pred.detach().cpu().numpy())), 0)
+            gt = np.concatenate((gt, y.detach().cpu().numpy()), 0)
+
+    #acc = np.array(acc)
+    #conf = np.array(conf)
+    #gt = np.array(gt)
+    print("GT shape: ", gt.shape)
+    print("Logits shape: ", logits.shape)
+    ece = tfp.stats.expected_calibration_error(num_bins=15, labels_true=gt.reshape(-1), logits=logits)
+    return ece 
+
+def test_classify_nllhd(model, testloader, device, model_type = "ensemble"):
+    total_loss = 0.0
+    criterion = torch.nn.NLLLoss()
+
+    for batch_idx,(x,y) in  enumerate(testloader):
+        x = x.to(device)
+        y = y.to(device)
+        
+        if model_type == "ensemble":
+            pred = model.predict(x)
+        else:
+            pred = model(x)
+            pred = torch.functional.F.softmax(pred) # should output probability
+        
+        #pred = pred.reshape(y.shape)
+        total_loss += criterion(torch.log(pred), y).item()
+
+    print("NLLHD on test set: ", total_loss)
+    return total_loss    
+
+def test_regr_nllhd(model, testloader, device, model_type = "ensemble"):
+    total_loss = 0.0
+    criterion = torch.nn.GaussianNLLLoss()
+
+    for batch_idx,(x,y) in  enumerate(testloader):
+        x = x.to(device)
+        y = y.to(device)
+        
+        if model_type == "ensemble":
+
+            pred, pred_var = model.predict(x)
+            #print("pred shape: ", pred.shape)
+            #print("pred_var shape: ", pred_var.shape)
+        else:
+            pred, pred_var = model(x)
+        #pred = pred.reshape(y.shape)
+        total_loss += criterion(pred, y, pred_var).item()
+
+    print("NLLHD on test set: ", total_loss)
+    return total_loss    
+
+#for regression, check if the models predictions with 95% confidence are actually 95%
+def test_cal_95(model, testloader, device, model_type = "ensemble"):
+    std_num = 1.96 #for 95% interval
+    
+    num_in_interval_total = 0
+    num_pts = 0
+
+    for batch_idx, (x, y) in enumerate(testloader):
+        x = x.to(device)
+        y = y.to(device)
+
+        if model_type == "ensemble":
+            mean, var = model.predict(x)
+        else:
+            mean, var = model(x)
+
+        interval_bot = mean - std_num*torch.sqrt(var)
+        interval_top = mean + std_num*torch.sqrt(var)
+
+        within_interval = (y >= interval_bot) & (y <= interval_top)
+        num_in_interval = within_interval.sum()
+
+        num_in_interval_total += num_in_interval.detach().cpu().numpy()
+        num_pts += y.shape[0]
+    #utils.print_and_log("", logger=logger)
+    frac_in_interval = num_in_interval_total/num_pts 
+    error = (frac_in_interval - 0.95)
+
+    return frac_in_interval, error
+
+def test_calibration(model, testloader, task, device, model_type = "ensemble"):
+    if task == "classify":
+        nllhd = test_classify_nllhd(model, testloader, device, model_type)
+        ece = test_ece(model, testloader, device, model_type)
+        return nllhd, ece
+    else:
+        nllhd = test_regr_nllhd(model, testloader, device, model_type)
+        frac_interval, error_cal = test_cal_95(model, testloader, device, model_type)
+        return nllhd, frac_interval

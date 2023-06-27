@@ -22,6 +22,27 @@ class LinearNet(nn.Module):
         x = self.fc3(x).squeeze()
         return x
 
+#for regression tasks: output a mean and a variance
+class LinearNetVar(nn.Module):
+    def __init__(self, inp_dim, num_hidden, out_dim):
+        super().__init__()
+
+        self.input_dim = inp_dim
+        self.num_hidden = num_hidden
+        self.out_dim = out_dim
+
+        self.fc1 = nn.Linear(inp_dim, num_hidden)
+        self.fc2 = nn.Linear(num_hidden, num_hidden)
+        self.fc3 = nn.Linear(num_hidden, out_dim) # output mean 
+        self.fc4 = nn.Linear(num_hidden, out_dim) #output var 
+    def forward(self, x):
+        x = x.view(-1, self.input_dim)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x).squeeze()
+        var = self.fc4(x).squeeze().exp() #so its positive
+        return x, var
+
 class CNN(nn.Module):
     def __init__(self, num_classes = 10):
         super(CNN, self).__init__()

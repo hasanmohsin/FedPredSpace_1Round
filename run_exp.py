@@ -11,6 +11,7 @@ import models
 import train_nets
 import utils
 import fed_algos
+import nvp
 
 #device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
 
@@ -363,24 +364,55 @@ def main(args):
                                     task = task)
         f_mcmc.train(valloader=valloader)
 
-    elif mode == "g_distill_f_mcmc":
+    elif mode == "tune_distill_f_mcmc":
         #split train data into distill and train
-        len_data = train_data.__len__()
-        len_more_data = int(round(len_data*0.2))
-        lens = [len_data - len_more_data, len_more_data]
-        train_data, distill_data = torch.utils.data.random_split(train_data, lens)
-        inp, pred = next(iter(trainloader))
-        inp_dim = inp.shape
+        #len_data = train_data.__len__()
+        #len_more_data = int(round(len_data*0.2))
+        #lens = [len_data - len_more_data, len_more_data]
+        #train_data, distill_data = torch.utils.data.random_split(train_data, lens)
+        #inp, pred = next(iter(trainloader))
+        #inp_dim = inp.shape
 
-        f_mcmc = fed_algos.Gen_F_MCMC_distill(num_clients = args.num_clients,
+        #additional hyperparams
+        mcmc_hyperparams['kd_lr'] = args.kd_lr
+        mcmc_hyperparams['kd_optim_type'] = args.kd_optim_type
+        mcmc_hyperparams['kd_epochs'] = args.kd_epochs
+
+        mcmc_hyperparams['init_interp_param'] = 0.5
+        mcmc_hyperparams['interp_param_lr'] = 1e-2
+
+        f_mcmc = fed_algos.Calibrated_PredBayes_distill(num_clients = args.num_clients,
                                     base_net = base_net,
                                     traindata=train_data, distill_data = distill_data,
-                                    inp_dim = inp_dim,
                                     num_rounds = 1,
                                     hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)
         f_mcmc.train(valloader=valloader)
+    elif mode == "genbayes":
+        sgd_hyperparams['kd_lr'] = args.kd_lr
+        sgd_hyperparams['kd_optim_type'] = args.kd_optim_type
+        sgd_hyperparams['kd_epochs'] = args.kd_epochs
+        sgd_hyperparams['gen_lr'] = args.gen_lr
+
+        EMBEDDING_DIM = inp_dim # The dimension of the embeddings
+        FLOW_N = 9 # Number of affine coupling layers
+        RNVP_TOPOLOGY = [200] # Size of the hidden layers in each coupling layer
+
+        #normalizing flow generative model
+        base_gen = nvp.LinearRNVP(input_dim=EMBEDDING_DIM, coupling_topology=RNVP_TOPOLOGY, flow_n=FLOW_N, batch_norm=True,
+                      mask_type='odds', conditioning_size=10, use_permutation=True, single_function=True,
+                      task = task)
+        base_gen = base_gen.to(device)
+
+        genbayes = fed_algos.GenBayes(num_clients = args.num_clients,
+                                    base_net = base_net, base_gen=base_gen, 
+                                    traindata=train_data, distill_data = distill_data,
+                                    num_rounds = 1,
+                                    hyperparams = sgd_hyperparams, device=device, logger = logger,
+                                    args=args, non_iid = args.non_iid,
+                                    task = task)
+        genbayes.train(valloader=valloader)
     elif mode == "global_bayes":
         print("cSGHMC inference")
         
@@ -410,6 +442,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default = 5e-4)
     parser.add_argument('--optim_type', type= str, default="sgdm")
+
+    parser.add_argument('--gen_lr', type=float, default=1e-4)
 
     #for federated learning
     parser.add_argument('--num_rounds', type=int, default = 6)

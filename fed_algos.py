@@ -5,6 +5,8 @@ import datasets
 import train_nets
 import utils
 import kd 
+import nvp
+import itertools
 
 class FedAvg:
     def __init__(self, num_clients, base_net, 
@@ -1736,6 +1738,220 @@ class ONESHOT_FL:
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
+# requires base generative model AND base net/discriminative model
+class GenBayes:
+    def __init__(self, num_clients, base_net, base_gen, 
+                 traindata, distill_data,
+                 num_rounds,
+                 hyperparams, device, args,logger, non_iid=0.0, task="classify"):
+        self.logger = logger
+        self.all_data = traindata
+        self.lr = hyperparams['lr']
+        self.g_lr = hyperparams['g_lr']
+        self.device = device
+        self.num_clients = num_clients
+        self.datasize = copy.deepcopy(hyperparams['datasize'])
+        self.batch_size = hyperparams['batch_size']
+        self.kdlr = hyperparams['kd_lr']
+        self.kdopt = hyperparams['kd_optim_type']
+        self.kdepoch = hyperparams['kd_epochs']
+        self.epoch_per_client = hyperparams['epoch_per_client']
+        self.outdim = hyperparams['outdim']
+        self.optim_type = hyperparams['optim_type']
+        self.seed = hyperparams['seed']
+        self.args = args
+
+        # initialize nets and data for all clients
+        self.client_nets = []
+        self.optimizers = []
+        self.gen_opt = []
+
+        #generative models on each client
+        self.client_gens = []
+
+        self.exp_id = hyperparams['exp_id']
+        self.save_dir = hyperparams['save_dir']
+        self.model_save_dir = hyperparams['model_save_dir']
+
+        if non_iid > 0.0:
+            self.client_dataloaders, self.client_datasize = datasets.non_iid_split(dataset=traindata,
+                                                                                   num_clients=num_clients,
+                                                                                   client_data_size=(
+                                                                                               self.datasize // num_clients),
+                                                                                   batch_size=self.batch_size,
+                                                                                   shuffle=False, non_iid_frac=non_iid,
+                                                                                   outdim=self.outdim)
+        else:
+            self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
+
+        for c in range(num_clients):
+            self.client_nets.append(copy.deepcopy(base_net))
+            self.client_gens.append(copy.deepcopy(base_gen))
+
+            if self.optim_type == "sgdm":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr, momentum=0.9))
+            elif self.optim_type == "sgd":
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr))
+            elif self.optim_type == "adam":
+                self.optimizers.append(torch.optim.Adam(self.client_nets[c].parameters(), lr=self.lr))
+            else:
+                utils.print_and_log("Optimizer type {} unkown, defualting to vanilla SGD")
+                self.optimizers.append(torch.optim.SGD(self.client_nets[c].parameters(), lr=self.lr))
+
+            self.gen_opt.append(torch.optim.Adam(itertools.chain(self.client_gens[c].parameters()), lr = self.gen_lr, weight_decay = 1e-5))
+        
+        self.num_rounds = num_rounds
+
+        self.task = task
+
+        if task == "classify":
+            self.criterion = torch.nn.CrossEntropyLoss()
+        else:
+            self.criterion = torch.nn.MSELoss()
+
+        self.global_net = copy.deepcopy(base_net)
+        self.base_net = base_net
+
+
+        distill_loader = torch.utils.data.DataLoader(distill_data,
+                                                batch_size=self.batch_size, shuffle=True,
+                                                pin_memory=True)
+        self.student = copy.copy(base_net)
+        self.distill = kd.KD(teacher=self,
+                             student=self.student, lr=self.kdlr,
+                             device=self.device,
+                             train_loader=distill_loader,
+                             kd_optim_type = self.kdopt
+                             )
+
+    def local_train(self, client_num):
+        c_dataloader = self.client_dataloaders[client_num]
+
+        self.client_nets[client_num], loss = train_nets.sgd_train_step(net=self.client_nets[client_num],
+                                                                       optimizer=self.optimizers[client_num],
+                                                                       criterion=self.criterion,
+                                                                       trainloader=c_dataloader, device=self.device)
+        self.client_gens[client_num], gen_loss = nvp.gen_train_step(gen = self.client_gens[client_num],
+                                                                        optimizer = self.gen_opt[client_num],
+                                                                        trainloader = c_dataloader, device= self.device)
+
+        print("Client  {}, p(y|x) Loss: {}, p(x) Loss: {}".format(client_num, loss, gen_loss))
+
+    # prediction on input x
+    def predict_classify(self, x):
+        client_pred = []
+        for c in range(self.num_clients):
+            self.client_nets[c] = self.client_nets[c].eval()
+            pred_logit = self.client_nets[c](x)
+
+            client_pred.append(pred_logit)
+        return torch.mean(torch.stack(client_pred), axis = 0)
+
+    def predict_regr(self, x):
+        client_pred = []
+        for c in range(self.num_clients):
+            self.client_nets[c] = self.client_nets[c].eval()
+            pred = self.client_nets[c](x)
+            client_pred.append(pred)
+
+        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
+
+
+    def predict(self, x):
+        if self.task == "classify":
+            return self.predict_classify(x)
+        else:
+            return self.predict_regr(x)
+   
+    
+    def aggregate(self):
+        self.distill.set_student(self.client_nets[0].state_dict())
+
+        #train the student via kd
+        self.distill.train(num_epochs = self.kdepoch)
+        self.student = self.distill.student
+        return
+   
+   
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            PATH = "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            print(PATH)
+            self.client_nets[client_num].load_state_dict(torch.load(PATH))
+        self.aggregate()
+    def global_update_step(self):
+        for client_num in range(self.num_clients):
+            for i in range(self.epoch_per_client):
+                self.local_train(client_num)
+        self.aggregate()
+
+    def test_classify(self, testloader):
+        total = 0
+        correct = 0
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = self.predict(x)
+
+            _, pred_class = torch.max(pred, 1)
+
+            total += y.size(0)
+            correct += (pred_class == y).sum().item()
+
+        acc = 100 * correct / total
+        print("Accuracy on test set: ", acc)
+        return acc
+
+    def test_mse(self, testloader):
+        total_loss = 0.0
+        criterion = torch.nn.MSELoss()
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            pred = self.predict(x)
+
+            pred = pred.reshape(y.shape)
+            total_loss += criterion(pred, y).item()
+
+        print("MSE on test set: ", total_loss)
+        return total_loss
+
+    def test_acc(self, testloader):
+        if self.task == "classify":
+            return self.test_classify(testloader)
+        else:
+            return self.test_mse(testloader)
+
+    def get_acc(self, net, valloader):
+        if self.task == "classify":
+            return utils.classify_acc(net, valloader)
+        else:
+            return utils.regr_acc(net, valloader)
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            #self.global_update_step()
+            self.global_update_step_trained_clients()
+            acc = self.distill.test_acc(valloader)
+            utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i, acc), self.logger)
+
+            for c in range(self.num_clients):
+                acc_c = self.get_acc(self.client_nets[c],valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+
+        #teacher acc
+        teacher_acc = self.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}".format(i, teacher_acc), self.logger)
+        utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"))
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        return
+
 
 
 class FedBE:
@@ -2025,3 +2241,414 @@ class FedBE:
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
+
+
+# Implements DPredBayes (ours)
+# same as F_MCMC but an additional distillation step is added
+# Also runs evaluation for FMCMC distill, EP MCMC, and FedPA (1 round) using the same samples
+class Calibrated_PredBayes_distill(EP_MCMC):
+    def __init__(self, num_clients, base_net, 
+                traindata, distill_data,
+                num_rounds, hyperparams, 
+                device, logger, non_iid = False, task = "classify"):
+        EP_MCMC.__init__(self, num_clients, base_net, 
+                traindata, 
+                num_rounds, hyperparams, device, logger, non_iid, task)
+
+        #make distillation dataset out of distill_data
+        distill_loader = torch.utils.data.DataLoader(distill_data, 
+                                                batch_size=self.batch_size, shuffle=True, 
+                                                pin_memory=True)
+
+        self.student = copy.copy(base_net)
+        self.kd_optim_type = hyperparams['kd_optim_type']
+        self.kd_lr = hyperparams['kd_lr']
+        self.kd_epochs = hyperparams['kd_epochs']
+
+        self.distill = kd.KD(teacher = self, 
+                             student = self.student, lr = self.kd_lr,#5e-3
+                             device = self.device,
+                             train_loader = distill_loader,
+                             kd_optim_type = self.kd_optim_type
+                            )
+
+        #in this experiment run, we also want to compare to EP MCMC and FedPA with same MCMC samples
+        # so we setup this here
+        self.fed_pa_trainer = FedPA(num_clients = num_clients, base_net = base_net, 
+                                    traindata = traindata, 
+                                    num_rounds = 1, 
+                                    hyperparams = hyperparams, logger=None, non_iid = non_iid, task = self.task,
+                                    device= self.device)
+
+        #for training the interpolation param on distillation set
+        self.interp_param = torch.tensor([hyperparams['init_interp_param']], device=self.device)
+        self.interp_param.requires_grad = True 
+        
+        #self.interp_param_optim = torch.optim.SGD([self.interp_param], lr = hyperparams['interp_param_lr'])
+        self.interp_param_optim = torch.optim.Adam([self.interp_param], lr = hyperparams['interp_param_lr'])
+    #Step 5
+    # distill step - on unlabeled dataset, train student model to match 
+    # the teacher predictions
+    def aggregate(self):
+        #train interpolation parameter
+        self.train_interp(num_epochs = 1)
+
+        #initialize student to a client network
+        self.distill.set_student(self.client_train[0].sampled_nets[-1])
+
+        #train the student via kd
+        self.distill.train(num_epochs = self.kd_epochs) #kd_epochs = 50
+        self.student = self.distill.student
+
+        return
+    
+    def train_interp(self, num_epochs):
+        torch.autograd.set_detect_anomaly(True)
+        #self.interp_param = self.interp_param.to(self.device)
+        
+        for i in range(num_epochs):
+            epoch_loss = 0.0
+            count = 0
+            for x, y in self.distill.train_loader:
+                x = x.to(self.device)
+                y = y.to(self.device)
+                
+                self.interp_param_optim.zero_grad()
+
+                #need to do log softmax to ensure the exp of this is normalized
+
+                if self.task == "classify":
+                    pred_logits = self.predict_classify(x) #should be predicted log prob over classes
+                   
+                else:
+                    pred_mean, pred_var = self.predict_regr(x) # should get mean and var of regression prediction 
+
+                    #reshape to [*, 1] if one dimensional
+                    #if len(pred_logits.shape) == 1:
+                    #    pred_logits = pred_logits.unsqueeze(-1)
+
+                #the loss is the negative log likelihood
+                if self.task == "classify":
+                    loss = torch.nn.NLLLoss()(torch.log(pred_logits), y)
+                else:
+                    #print("pred mean: ", pred_mean)
+                    #print("pred_var: ", pred_var)
+                    loss = torch.nn.GaussianNLLLoss()(pred_mean, y, pred_var) #should be input, target, var
+                    #loss = (pred_mean -  y)**2/(2*pred_std**2) + torch.log(torch.sqrt(2*np.pi)*pred_std)
+                #self.interp_param.retain_grad() #for some reason, its a leaf node, so needs to retain grad
+                
+                #print("pred logits: ", pred_logits[75,:])
+                #print("Loss: ", loss)
+                
+                loss.backward()
+
+                #print("\nInterp param before update: ", self.interp_param)
+                #print("Gradient of interp param:, ", self.interp_param.grad)
+                #print("Requires gradient? : ", self.interp_param.requires_grad)
+                #print("Is leaf? ", self.interp_param.is_leaf)
+                
+                self.interp_param_optim.step()
+                
+                #print("Interp param after step: ", self.interp_param)    
+            
+
+                epoch_loss += loss.item()
+                
+                count+=1
+            print("Epoch: ", i+1, "Loss: ", epoch_loss, "Interp Param: ", self.interp_param)
+
+            if (i+1)%20 == 0:
+                self.test_acc(self.distill_train_loader)
+
+    
+        print("Training Interp Param Done! Interp Param: {}".format(self.interp_param))
+        return 
+    
+
+
+
+    #so we can compare with EP MCMC 
+    def ep_mcmc_aggregate(self):
+        #in aggregation step - average all models
+
+        global_prec = 0.0
+        global_mean = 0.0
+
+        #average over clients    
+        for c in range(self.num_clients):
+            mean, cov = self.get_client_sample_mean_cov(c)
+            # in line below, either do this (for identity approx to covar), or 1/cov (for diagonal approx), former gave better results
+            client_prec = 1 ############# 1/cov 
+            global_prec += client_prec
+            global_mean += client_prec * mean 
+
+        global_mean = (1/global_prec) * global_mean 
+        global_var = (1/global_prec)*torch.ones_like(global_mean).to(self.device)
+
+        dist = torch.distributions.Normal(global_mean, global_var.reshape(1, -1))
+        dist = torch.distributions.independent.Independent(dist, 1)
+        
+        global_samples = dist.sample([self.num_g_samples])
+      
+    
+        self.global_train.sampled_nets = []
+        
+        for s in range(self.num_g_samples):
+            # in line below, can either use only mean as sample, or sample from gaussian centered at mean
+            # from experiments, just the mean works better (possibly due to high correlation between parameters that a diagonal approx can't capture)
+            sample = global_mean #global_samples[s,0,:] ####################################### 
+            
+
+            #load into global net
+            torch.nn.utils.vector_to_parameters(sample, self.global_train.net.parameters())
+            self.global_train.sampled_nets.append(copy.deepcopy(self.global_train.net.state_dict()))
+
+        return
+
+    #prediction on input x
+    def predict_classify(self, x):
+        global_pred_product = 1.0
+        global_pred_mixture = 0.0
+
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+                
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred = torch.mean(pred_list, dim=0, keepdims=False)
+            
+            #assuming a uniform posterior
+            global_pred_product *= pred
+            global_pred_mixture += pred/(self.num_clients)
+        
+        
+        global_pred_product = global_pred_product/torch.sum(global_pred_product, dim=-1, keepdims=True)
+        global_pred_mixture = global_pred_mixture/torch.sum(global_pred_mixture, dim=-1, keepdims=True)
+
+        global_pred_product_no_grad = global_pred_product.detach().clamp(min = 1e-41)
+        global_pred_mixture_no_grad = global_pred_mixture.detach().clamp(min= 1e-41)
+
+        global_pred_product_no_grad = global_pred_product_no_grad/global_pred_product_no_grad.sum()
+        global_pred_mixture_no_grad = global_pred_mixture_no_grad/global_pred_mixture_no_grad.sum()
+    
+
+        #interpolate between the two distributions with self.interp_param
+        log_global_pred = self.interp_param*torch.log(global_pred_product_no_grad) + (1- self.interp_param)*torch.log(global_pred_mixture_no_grad)
+        #log_global_pred = log_global_pred.clamp(min=-40)
+        global_pred = torch.functional.F.softmax(log_global_pred, dim = -1)#torch.exp(log_global_pred)/torch.sum(torch.exp(log_global_pred), dim=-1, keepdims=True)
+        global_pred = global_pred/torch.sum(global_pred)
+
+        #print("\nInterp Param: ", self.interp_param)
+        #print("Mixture Pred: ", global_pred_mixture)
+        #print("Product Pred: ", global_pred_product)
+        #print("Logit global pred: ", log_global_pred)
+        #print("global_pred: ", global_pred)
+        
+        #if torch.isinf(-log_global_pred).any():
+        #    print("\n\n IS Neg INF!!!!!!!\n\n")
+        #    
+        #    
+        #   inf_idx = torch.nonzero(torch.isinf(-log_global_pred))
+            
+        #    print("Inf idx: ", inf_idx[0,0])
+        #    print("Size of global pred: ", global_pred_mixture.shape)
+        #    print("Mix index for nan: ", global_pred_mixture[inf_idx[0,0], :])
+        #    print("Prod index for nan: ", global_pred_product[inf_idx[0,0], :])
+        #    print("Log global pred at nan idx: ", log_global_pred[inf_idx[0,0], :])
+        #    print("Global pred: ", global_pred[inf_idx[0,0], :])
+        #    print("Taking log of global pred again: ", torch.log(global_pred[inf_idx[0,0], :]))
+        #if torch.isnan(global_pred).any():
+        #    print("\n\n IS NAN !!!!!!!\n\n")
+        #    return
+        #    _, nan_idx = torch.isnan(global_pred).max()
+        #    
+        #    print("Mix index for nan: ", global_pred_mixture[:, nan_idx])
+        #    print("Prod index for nan: ", global_pred_product[:, nan_idx])
+        #    print("Log global pred at nan idx: ", log_global_pred[:, nan_idx])
+        #
+        #    return 
+        
+        return global_pred 
+    
+    def predict_regr(self,x):
+        global_pred_product = 0.0
+        prec_sum_product = 0.0
+
+        global_pred_mixture = 0.0 
+        second_moment_mixture = 0.0 
+
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+            
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred_mean = torch.mean(pred_list, dim=0, keepdims=False)
+
+            # the regression model is assumed to make predictions as N(f(x), 1) where f(x) = neural net output
+            #Therefore, the variance in the prediction is 1.0 (the homeoscedatic assumed variance) + bayesian variance
+            if pred_list.shape[0] == 1:
+                pred_var = torch.ones_like(pred_mean)
+            else: 
+                pred_var = 1.0 + torch.var(pred_list, dim = 0, keepdims = False)
+            #print("client: {}, pred_mean: {}".format(c, pred_mean))
+            #print("client: {}, pred_var: {}".format(c, pred_var))
+
+            #product aggregation
+            #assuming a uniform posterior
+            global_pred_product += pred_mean/pred_var
+            prec_sum_product += 1/pred_var
+            
+            # mixture aggregation
+            global_pred_mixture += pred_mean/self.num_clients
+            second_moment_mixture +=  (pred_var + pred_mean**2)/self.num_clients
+
+        global_pred_product = global_pred_product/prec_sum_product
+        var_product = 1/prec_sum_product 
+
+        var_mixture = second_moment_mixture - (global_pred_mixture)**2
+
+        #print("global_pred_product: ", global_pred_product)
+        #print("var_product: ", var_product)
+        #print("global_pred_mixture: ", global_pred_mixture)
+        #print("var_mixture: ", var_mixture)
+
+        # detach gradients (wrt interp_param these are all constants)
+        global_pred_product = global_pred_product.detach()
+        var_product = var_product.detach()
+        global_pred_mixture = global_pred_mixture.detach()
+        var_mixture = var_mixture.detach()
+
+
+        #interpolate the mean and variance between the product and mixture 
+        global_prec =  (self.interp_param)/var_product + (1 - self.interp_param)/var_mixture
+        global_var = 1/global_prec 
+
+        global_pred = (self.interp_param)*global_pred_product/var_product + (1-self.interp_param)*global_pred_mixture/var_mixture 
+        global_pred = global_pred * global_var
+        return global_pred, global_var #should output mean and variance !!!!!
+
+    #Step 3 and 4 (local posterior estimate  + aggregation for global posterior)
+    def predict(self, x):
+        if self.task == "classify":
+            return self.predict_classify(x)
+        else:
+            return self.predict_regr(x)
+
+    def test_classify(self, testloader):
+        total = 0
+        correct = 0
+
+        for batch_idx, (x, y) in enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = self.predict(x)
+            _, pred_class = torch.max(pred, 1)    
+
+            total += y.size(0)
+            correct += (pred_class == y).sum().item()
+
+        acc = 100*correct/total
+        print("Accuracy on test set: ", acc)
+        return acc
+ 
+    def test_mse(self, testloader):
+        total_loss = 0.0
+        criterion = torch.nn.MSELoss()
+
+        for batch_idx,(x,y) in  enumerate(testloader):
+            x = x.to(self.device)
+            y = y.to(self.device)
+            
+            pred, pred_var = self.predict(x)
+           
+            pred = pred.reshape(y.shape)
+            total_loss += criterion(pred, y).item()
+
+        print("MSE on test set: ", total_loss)
+        return total_loss    
+
+    def test_acc(self, testloader):
+        if self.task == "classify":
+            return self.test_classify(testloader)
+        else:
+            return self.test_mse(testloader)
+
+    #load the local models trained previously, then tune beta and distill (call aggregate)
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            PATH =  "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
+            self.client_nets[client_num].load_state_dict(torch.load(PATH))
+            if self.onemodel == False:
+                for i in range(self.epoch_per_client):
+                    self.local_train(client_num)
+        self.aggregate()
+
+    def train(self, valloader):
+        for i in range(self.num_rounds):
+            # Step 1 and 2: local MCMC sampling + communicating to server
+            
+            ################################
+            #train from scratch
+            self.global_update_step()
+
+            #or load saved models
+            #self.global_update_step_trained_clients()
+            ######################################
+
+
+            acc = self.distill.test_acc(valloader)
+            nllhd, cal_error = utils.test_calibration(model = self.distill.student, testloader=valloader, task=self.task, 
+                                                      device = self.device, model_type= "single")
+
+            utils.print_and_log("Global rounds completed: {}, distilled_f_mcmc test_acc: {}, NLLHD: {}, Calibration Error: {}".format(i, acc, nllhd, cal_error), self.logger)
+
+            for c in range(self.num_clients):
+                acc_c = self.client_train[c].test_acc(valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+
+        #evaluate samples on other methods (FMCMC, and EP MCMC)
+        f_mcmc_acc = self.test_acc(valloader)
+        utils.print_and_log("Global rounds completed: {}, f_mcmc test_acc: {}".format(i, f_mcmc_acc), self.logger)
+        f_mcmc_nllhd, f_mcmc_cal_error = utils.test_calibration(model = self, testloader=valloader, task=self.task,
+                                                      device = self.device, model_type= "ensemble")
+        utils.print_and_log("Global rounds completed: {}, f_mcmc test_ NLLHD: {}, Cal Error: {}".format(i, f_mcmc_nllhd, f_mcmc_cal_error), self.logger)
+
+        #save to dict
+        utils.write_result_dict_to_file(result=f_mcmc_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"))
+
+        #compute ep mcmc result and store in global_train
+        self.ep_mcmc_aggregate()
+        ep_mcmc_acc = self.global_train.test_acc(valloader)
+        ep_mcmc_nllhd, ep_mcmc_cal_error = utils.test_calibration(model = self.global_train, testloader=valloader, task=self.task,
+                                                      device = self.device, model_type= "ensemble")
+        utils.print_and_log("Global rounds completed: {}, ep_mcmc test_acc: {}, NLLHD: {}, Calibration Error: {}".format(i, ep_mcmc_acc, ep_mcmc_nllhd, ep_mcmc_cal_error), self.logger)
+        
+        #save to dict 
+        utils.write_result_dict_to_file(result=ep_mcmc_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"))
+
+
+        #for fed_pa 1 round results
+        #copy over trained clients
+        self.fed_pa_trainer.client_train = copy.deepcopy(self.client_train)
+
+        ##### UNCOMMENT LATER ###########
+        #take step of FedPA 
+        self.fed_pa_trainer.global_update_step_trained_clients()
+        fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
+        fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
+                                                      device = self.device, model_type= "single")
+        utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
+        
+        #save to dict 
+        utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"))
+
+
+        #save client sample models 
+        #self.save_models()
+
+        return

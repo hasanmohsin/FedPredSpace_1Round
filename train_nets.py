@@ -44,7 +44,6 @@ def sgd_prox_train_step(net, g_net, reg, optimizer, criterion, trainloader, devi
         count+=1
     return net, epoch_loss
 
-
 # training with regular SGD
 def sgd_train(net, lr, num_epochs, trainloader):
     #optimizer = torch.optim.SGD(net.parameters(), lr = lr, momentum=0.9)
@@ -176,7 +175,8 @@ class cSGHMC:
 
         x = x.to(self.device)
 
-        out = x.data.new(Nsamples, x.shape[0], self.net.out_dim)
+        out = torch.zeros(Nsamples, x.shape[0], self.net.out_dim, device = self.device)
+        #out = x.data.new(Nsamples, x.shape[0], self.net.out_dim)
 
         if self.task != "classify":
             out_probs = False
@@ -192,15 +192,29 @@ class cSGHMC:
             
             #reshape to [B, 1]
             if self.net.out_dim == 1:
-                out_x = out_x.unsqueeze(-1)
+                out_x = out_x.clone().unsqueeze(-1)
 
-            out[idx] = out_x
+            #out[idx] = out_x
 
             if out_probs:
-                out[idx] = torch.nn.functional.softmax(out[idx], dim = 1)
+                out_x_val = torch.nn.functional.softmax(out_x, dim = 1)
+            else:
+                out_x_val = out_x 
 
+            #out[idx] should be initially 0
+            out[idx] = out_x_val.clone()
 
+            #out_x_val = out_x_val.reshape(-1, x.shape[0], self.net.out_dim)
+            #return out_x_val
         return out
+    
+    def predict(self, x, out_probs=True):
+        
+        outs =  self.ensemble_inf(x, out_probs = out_probs)
+        if self.task == "classify":
+            return torch.mean(outs, dim=0)
+        else:
+            return torch.mean(outs, dim=0), torch.var(outs, dim=0)
 
     def test_acc(self, testloader):
         #for classification

@@ -65,11 +65,17 @@ class KD:
                     pred_logits = pred_logits.unsqueeze(-1)
 
             with torch.no_grad():
-                teach_targ = self.teacher.predict(x)
+                if self.task == "classify":
+                    teach_targ = self.teacher.predict(x)
+                else:
+                    teach_targ, teach_var = self.teacher.predict(x)
 
             #print("x size: {}".format(x.shape))
             #print("Student out size: {}".format(pred_logits.size()))
             #print("Teaher out size: {}".format(teach_targ.size()))
+
+            if self.task == "regression":
+                pred_logits = pred_logits.reshape(teach_targ.shape)
 
             loss = self.criterion(pred_logits, teach_targ.detach())
             loss.backward()
@@ -108,8 +114,11 @@ class KD:
         for batch_idx, (x, y) in enumerate(testloader):
             x  = x.to(self.device)
             y = y.to(self.device)
-            
-            t_pred = self.teacher.predict(x)
+
+            if self.task == "classify":
+                t_pred = self.teacher.predict(x)
+            else:
+                t_pred, t_var = self.teacher.predict(x) 
 
             #average to get p(y | x, D)
             # shape: batch_size x output_dim
