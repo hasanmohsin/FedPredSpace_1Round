@@ -2464,8 +2464,11 @@ class Calibrated_PredBayes_distill(EP_MCMC):
         for s in range(self.num_g_samples):
             # in line below, can either use only mean as sample, or sample from gaussian centered at mean
             # from experiments, just the mean works better (possibly due to high correlation between parameters that a diagonal approx can't capture)
-            sample = global_mean #global_samples[s,0,:] ####################################### 
             
+            if self.task == "classify":
+                sample = global_mean #global_samples[s,0,:] ####################################### 
+            else:
+                sample = global_samples[s,0,:] #for regression, it works better to have multiple samples (for classification, mean works better)
 
             #load into global net
             torch.nn.utils.vector_to_parameters(sample, self.global_train.net.parameters())
@@ -2591,7 +2594,12 @@ class Calibrated_PredBayes_distill(EP_MCMC):
             if pred_list.shape[0] == 1:
                 pred_var = torch.ones_like(pred_mean)
             else: 
-                pred_var = 1.0 + torch.var(pred_list, dim = 0, keepdims = False)
+                if self.task == "classify":
+                    pred_var = 1.0 + torch.var(pred_list, dim = 0, keepdims = False)
+                else:
+                    # set a higher predicted variance for regression (is a hyperparam basically) 
+                    pred_var = 2.0 + torch.var(pred_list, dim = 0, keepdims = False)
+
             #print("client: {}, pred_mean: {}".format(c, pred_mean))
             #print("client: {}, pred_var: {}".format(c, pred_var))
 
@@ -2697,9 +2705,13 @@ class Calibrated_PredBayes_distill(EP_MCMC):
             #self.global_update_step()
 
             #or load saved models
-            self.global_update_step_trained_clients()
+            if self.task == "classify":
+                self.global_update_step_trained_clients()
+            else:
+                self.global_update_step() #regression is cheap enough to retrain
             ######################################
 
+            utils.print_and_log("\nTuned value of interp param: {}\n".format(self.interp_param), logger=self.logger)
 
             acc = self.distill.test_acc(valloader)
             nllhd, cal_error = utils.test_calibration(model = self.distill.student, testloader=valloader, task=self.task, 
@@ -2804,20 +2816,21 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         ##### UNCOMMENT LATER ###########
         #take step of FedPA 
-        self.fed_pa_trainer.global_update_step_trained_clients()
-        fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
-        fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
+        if self.task == "classify":
+            self.fed_pa_trainer.global_update_step_trained_clients()
+            fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
+            fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
                                                       device = self.device, model_type= "single")
-        utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
+            utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
         
-        #save to dict 
-        utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
+            #save to dict 
+            utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
                                  file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"),
                                  type = "acc")
-        utils.write_result_dict_to_file(result=fed_pa_nllhd, seed = self.seed, 
+            utils.write_result_dict_to_file(result=fed_pa_nllhd, seed = self.seed, 
                                  file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"),
                                  type = "nllhd")
-        utils.write_result_dict_to_file(result=fed_pa_cal_error, seed = self.seed, 
+            utils.write_result_dict_to_file(result=fed_pa_cal_error, seed = self.seed, 
                                  file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"),
                                  type = "cal")
 

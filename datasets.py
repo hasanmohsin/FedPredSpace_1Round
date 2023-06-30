@@ -95,12 +95,19 @@ def non_iid_split(dataset, num_clients, client_data_size, batch_size, shuffle, s
         data_size = len(dataset) #data.targets.shape[0]
         c_data_size = int(np.floor(data_size/num_clients))
 
+        print("Size of dataset: ", data_size)
+
         #to use all data
         c_data_size_last = data_size - c_data_size*(num_clients - 1)
 
         lens = num_clients*[c_data_size]
         lens[-1] = c_data_size_last
         
+        #first sort dataset by its value in an input column
+        dataset = sort_by_col_value(dataset)
+
+        print("Size of dataset after sorting: ", len(dataset))
+
         print("Using sequential split for regression NONIID!")
         c_data = utils.seq_split(dataset, lens)
         
@@ -116,6 +123,27 @@ def non_iid_split(dataset, num_clients, client_data_size, batch_size, shuffle, s
 
     return data_splitted, lens
 
+
+def sort_by_col_value(dataset):
+    #the dataset is expected to be torch Subset object
+    input_data = dataset.dataset.tensors[0][dataset.indices] #need .dataset if this is actually a torch Subset object
+    y_data = dataset.dataset.tensors[1][dataset.indices] # should be 1 D
+
+    assert(len(y_data.shape) == 1)
+
+    #pick column with most variance  (sorted between 0 to 1)
+    _, max_var_inds = torch.max(torch.var(input_data, dim=0, keepdims=True), dim=1)#min(0, input_data.shape[-1]-1)
+    col_index_to_sort = int(max_var_inds[0].item()) 
+    print("Sorting along column: ", col_index_to_sort)
+
+    sorted_indices = input_data[:, col_index_to_sort].sort()[1]
+    input_data = input_data[sorted_indices]
+    y_data = y_data[sorted_indices]
+
+    sorted_dataset = torch.utils.data.TensorDataset(input_data,
+                                              y_data)
+
+    return sorted_dataset
 
 #do an iid split of the dataset into num_clients parts
 # each client gets equal sized dataset
@@ -304,6 +332,7 @@ def get_winequality(batch_size, normalize = True):
     if normalize:
         #df1 = (df1-df1.min())/(df1.max()-df1.min())
         df1 = (df1 - df1.mean())/(df1.std())#(df1-df1.min())/(df1.max()-df1.min())
+    
     data=df1[col1]
     target = data.pop('quality')
     ds = tf.data.Dataset.from_tensor_slices((data.values, target.values))

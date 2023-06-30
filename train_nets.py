@@ -214,6 +214,7 @@ class cSGHMC:
         if self.task == "classify":
             return torch.mean(outs, dim=0)
         else:
+            # when we do predict on EP MCMC, add an aleatoric variance estimate of 1.0
             return torch.mean(outs, dim=0), torch.var(outs, dim=0)
 
     def test_acc(self, testloader):

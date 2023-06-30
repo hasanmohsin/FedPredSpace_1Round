@@ -133,7 +133,7 @@ def change_exp_id(exp_id_src, source_mode, target_mode):
 
 def seq_split(dataset, lengths, generator = torch.default_generator):
     """
-    Randomly split a dataset into non-overlapping new datasets of given lengths.
+    Split a dataset into non-overlapping new datasets of given lengths., with the order they currently have
     Optionally fix the generator for reproducible results, e.g.:
 
     >>> random_split(range(10), [3, 7], generator=torch.Generator().manual_seed(42))
@@ -147,6 +147,7 @@ def seq_split(dataset, lengths, generator = torch.default_generator):
     if sum(lengths) != len(dataset):    # type: ignore[arg-type]
         raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
 
+    #just the integers [0, 1, ..., datasize-1]
     indices_sort, _ = torch.sort(torch.randperm(sum(lengths), generator=generator))
     indices = indices_sort.tolist()
     return [torch.utils.data.Subset(dataset, indices[offset - length : offset]) for offset, length in zip(torch._utils._accumulate(lengths), lengths)]
