@@ -2684,7 +2684,7 @@ class Calibrated_PredBayes_distill(EP_MCMC):
             for idx in range(self.max_samples): 
                 path = model_PATH + "_sample_" + str(idx) 
                 weight_dict = torch.load(path)
-                self.client_train.sampled_nets.append(weight_dict)
+                self.client_train[client_num].sampled_nets.append(weight_dict)
             
         self.aggregate()
 
