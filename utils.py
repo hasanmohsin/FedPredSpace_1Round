@@ -231,17 +231,28 @@ def test_cal_95(model, testloader, device, model_type = "ensemble"):
         else:
             mean, var = model(x)
 
+        #reshape to be similar to y predictions
+        mean = mean.reshape(y.shape)
+        var = var.reshape(y.shape)
+
         interval_bot = mean - std_num*torch.sqrt(var)
         interval_top = mean + std_num*torch.sqrt(var)
 
         within_interval = (y >= interval_bot) & (y <= interval_top)
         num_in_interval = within_interval.sum()
+        
+        #print("pred_mean shape: ", mean.shape)
+        #print("y.shape: ", y.shape)
 
         num_in_interval_total += num_in_interval.detach().cpu().numpy()
         num_pts += y.shape[0]
     #utils.print_and_log("", logger=logger)
+
+    #print("Num_in_interval: {}, num_pts: {}".format(num_in_interval_total, num_pts))
     frac_in_interval = num_in_interval_total/num_pts 
     error = (frac_in_interval - 0.95)
+    
+    print("Error (frac_in_interval - 0.95): {}".format(error))
 
     return frac_in_interval, error
 
@@ -254,3 +265,13 @@ def test_calibration(model, testloader, task, device, model_type = "ensemble"):
         nllhd = test_regr_nllhd(model, testloader, device, model_type)
         frac_interval, error_cal = test_cal_95(model, testloader, device, model_type)
         return nllhd, frac_interval
+
+
+#KL(p||q) for univariate Gaussians
+# note: means and vars should be of shape [B, 1] 
+def kl_div_gauss(p_mean, p_var, q_mean, q_var):
+    p_std = torch.sqrt(p_var)
+    q_std = torch.sqrt(q_var) 
+    kl_val = torch.log(q_std) - torch.log(p_std) + (p_var + (p_mean - q_mean)**2)/(2 * q_var) - 0.5 
+
+    return kl_val.mean() 

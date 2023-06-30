@@ -7,6 +7,7 @@ import utils
 import kd 
 import nvp
 import itertools
+import models
 
 class FedAvg:
     def __init__(self, num_clients, base_net, 
@@ -2260,7 +2261,15 @@ class Calibrated_PredBayes_distill(EP_MCMC):
                                                 batch_size=self.batch_size, shuffle=True, 
                                                 pin_memory=True)
 
-        self.student = copy.copy(base_net)
+        if task == "classify":
+            self.student = copy.copy(base_net)
+        else:
+            #student model for regression needs to output variance as well
+            self.student = models.LinearNetVar(inp_dim = base_net.input_dim, 
+                                               num_hidden = base_net.num_hidden, 
+                                               out_dim = base_net.out_dim)
+            self.student = self.student.to(self.device)
+
         self.kd_optim_type = hyperparams['kd_optim_type']
         self.kd_lr = hyperparams['kd_lr']
         self.kd_epochs = hyperparams['kd_epochs']
@@ -2284,18 +2293,23 @@ class Calibrated_PredBayes_distill(EP_MCMC):
         self.interp_param = torch.tensor([hyperparams['init_interp_param']], device=self.device)
         self.interp_param.requires_grad = True 
         
-        #self.interp_param_optim = torch.optim.SGD([self.interp_param], lr = hyperparams['interp_param_lr'])
+        #self.interp_param_optim = torch.optim.LBFGS([self.interp_param], lr = hyperparams['interp_param_lr'], max_iter=50)
+        #self.interp_param_optim = torch.optim.SGD([self.interp_param], lr=hyperparams['interp_param_lr'], momentum=0.1)
         self.interp_param_optim = torch.optim.Adam([self.interp_param], lr = hyperparams['interp_param_lr'])
     #Step 5
     # distill step - on unlabeled dataset, train student model to match 
     # the teacher predictions
     def aggregate(self):
         #train interpolation parameter
-        self.train_interp(num_epochs = 1)
+        self.train_interp(num_epochs = 10)
+
+        #self.train_interp_lfbgs(num_epochs=10)
 
         #initialize student to a client network
-        self.distill.set_student(self.client_train[0].sampled_nets[-1])
-
+        if self.task == "classify":
+            self.distill.set_student(self.client_train[0].sampled_nets[-1])
+        #else: the student is randomly initialized 
+        
         #train the student via kd
         self.distill.train(num_epochs = self.kd_epochs) #kd_epochs = 50
         self.student = self.distill.student
@@ -2303,7 +2317,7 @@ class Calibrated_PredBayes_distill(EP_MCMC):
         return
     
     def train_interp(self, num_epochs):
-        torch.autograd.set_detect_anomaly(True)
+        #torch.autograd.set_detect_anomaly(True)
         #self.interp_param = self.interp_param.to(self.device)
         
         for i in range(num_epochs):
@@ -2329,7 +2343,9 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
                 #the loss is the negative log likelihood
                 if self.task == "classify":
-                    loss = torch.nn.NLLLoss()(torch.log(pred_logits), y)
+                    #print("Pred logits SHAPE: ", pred_logits.shape)
+                    #print("y shape: ", y.shape)
+                    loss = torch.nn.CrossEntropyLoss()(torch.log(pred_logits), y)
                 else:
                     #print("pred mean: ", pred_mean)
                     #print("pred_var: ", pred_var)
@@ -2365,7 +2381,53 @@ class Calibrated_PredBayes_distill(EP_MCMC):
         return 
     
 
+    
+    def train_interp_lfbgs(self, num_epochs):
+        # do a pass thru dataset and collect product and mixture probabilities
+        prod_list = []
+        mix_list = []
+        labels_list = []
+            
+        for x, y in self.distill.train_loader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+                
+            prod_probs, mix_probs = self.get_prod_mix_predict_classify(x)
 
+            prod_list.append(prod_probs)
+            mix_list.append(mix_probs)
+            labels_list.append(y)
+        prods = torch.cat(prod_list).to(self.device)
+        mixs = torch.cat(mix_list).to(self.device)
+        labels = torch.cat(labels_list).to(self.device)
+        
+
+                
+        def closure_eval():
+            self.interp_param_optim.zero_grad()
+
+            #need to do log softmax to ensure the exp of this is normalized
+            if self.task == "classify":
+                log_global_pred = self.interp_param*torch.log(prods) + (1- self.interp_param)*torch.log(mixs)
+        
+                # try temp scaling
+                #log_global_pred = (1/self.interp_param) * torch.log(prods)
+                  
+
+            #the loss is the negative log likelihood
+            if self.task == "classify":
+                loss = torch.nn.CrossEntropyLoss()(log_global_pred, labels)
+            #else:  
+                #loss = torch.nn.GaussianNLLLoss()(pred_mean, y, pred_var) #should be input, target, var
+                
+            loss.backward()
+
+            return loss 
+                
+        self.interp_param_optim.step(closure_eval)
+        print("Training Interp Param Done! Interp Param: {}".format(self.interp_param))
+        return 
+    
 
     #so we can compare with EP MCMC 
     def ep_mcmc_aggregate(self):
@@ -2405,6 +2467,35 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         return
 
+    def get_prod_mix_predict_classify(self, x):
+        global_pred_product = 1.0
+        global_pred_mixture = 0.0
+
+        for c in range(self.num_clients):
+            pred_list = self.client_train[c].ensemble_inf(x, out_probs=True)
+                
+            #average to get p(y | x, D)
+            # shape: batch_size x output_dim
+            pred = torch.mean(pred_list, dim=0, keepdims=False)
+            
+            #assuming a uniform posterior
+            global_pred_product *= pred
+            global_pred_mixture += pred/(self.num_clients)
+        
+        
+        global_pred_product = global_pred_product/torch.sum(global_pred_product, dim=-1, keepdims=True)
+        global_pred_mixture = global_pred_mixture/torch.sum(global_pred_mixture, dim=-1, keepdims=True)
+
+        global_pred_product_no_grad = global_pred_product.detach().clamp(min = 1e-41)
+        global_pred_mixture_no_grad = global_pred_mixture.detach().clamp(min= 1e-41)
+
+        #renormalize
+        global_pred_product_no_grad = global_pred_product_no_grad/global_pred_product_no_grad.sum(dim=-1, keepdims=True)
+        global_pred_mixture_no_grad = global_pred_mixture_no_grad/global_pred_mixture_no_grad.sum(dim=-1, keepdims=True)
+
+        return global_pred_product_no_grad, global_pred_mixture_no_grad
+
+
     #prediction on input x
     def predict_classify(self, x):
         global_pred_product = 1.0
@@ -2428,15 +2519,20 @@ class Calibrated_PredBayes_distill(EP_MCMC):
         global_pred_product_no_grad = global_pred_product.detach().clamp(min = 1e-41)
         global_pred_mixture_no_grad = global_pred_mixture.detach().clamp(min= 1e-41)
 
-        global_pred_product_no_grad = global_pred_product_no_grad/global_pred_product_no_grad.sum()
-        global_pred_mixture_no_grad = global_pred_mixture_no_grad/global_pred_mixture_no_grad.sum()
+        #renormalize
+        global_pred_product_no_grad = global_pred_product_no_grad/global_pred_product_no_grad.sum(dim=-1, keepdims=True)
+        global_pred_mixture_no_grad = global_pred_mixture_no_grad/global_pred_mixture_no_grad.sum(dim=-1, keepdims=True)
     
 
         #interpolate between the two distributions with self.interp_param
-        log_global_pred = self.interp_param*torch.log(global_pred_product_no_grad) + (1- self.interp_param)*torch.log(global_pred_mixture_no_grad)
+        log_global_pred = torch.clamp(self.interp_param, min=0.0)*torch.log(global_pred_product_no_grad) + torch.clamp((1- self.interp_param), min=0.0)*torch.log(global_pred_mixture_no_grad)
+        
+        # try temp scaling
+        #log_global_pred = (1/self.interp_param) * torch.log(global_pred_product_no_grad)
+        
         #log_global_pred = log_global_pred.clamp(min=-40)
         global_pred = torch.functional.F.softmax(log_global_pred, dim = -1)#torch.exp(log_global_pred)/torch.sum(torch.exp(log_global_pred), dim=-1, keepdims=True)
-        global_pred = global_pred/torch.sum(global_pred)
+        global_pred = global_pred/torch.sum(global_pred, dim=-1, keepdims=True) 
 
         #print("\nInterp Param: ", self.interp_param)
         #print("Mixture Pred: ", global_pred_mixture)
@@ -2600,7 +2696,7 @@ class Calibrated_PredBayes_distill(EP_MCMC):
             nllhd, cal_error = utils.test_calibration(model = self.distill.student, testloader=valloader, task=self.task, 
                                                       device = self.device, model_type= "single")
 
-            utils.print_and_log("Global rounds completed: {}, distilled_f_mcmc test_acc: {}, NLLHD: {}, Calibration Error: {}".format(i, acc, nllhd, cal_error), self.logger)
+            utils.print_and_log("\nGlobal rounds completed: {}, distilled_f_mcmc test_acc: {}, NLLHD: {}, Calibration Error: {}\n".format(i, acc, nllhd, cal_error), self.logger)
 
             for c in range(self.num_clients):
                 acc_c = self.client_train[c].test_acc(valloader)
@@ -2610,21 +2706,52 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         #evaluate samples on other methods (FMCMC, and EP MCMC)
         f_mcmc_acc = self.test_acc(valloader)
-        utils.print_and_log("Global rounds completed: {}, f_mcmc test_acc: {}".format(i, f_mcmc_acc), self.logger)
+        utils.print_and_log("\n\nGlobal rounds completed: {}, f_mcmc test_acc: {}".format(i, f_mcmc_acc), self.logger)
         f_mcmc_nllhd, f_mcmc_cal_error = utils.test_calibration(model = self, testloader=valloader, task=self.task,
                                                       device = self.device, model_type= "ensemble")
-        utils.print_and_log("Global rounds completed: {}, f_mcmc test_ NLLHD: {}, Cal Error: {}".format(i, f_mcmc_nllhd, f_mcmc_cal_error), self.logger)
+        utils.print_and_log("Global rounds completed: {}, f_mcmc test_ NLLHD: {}, Cal Error: {}\n".format(i, f_mcmc_nllhd, f_mcmc_cal_error), self.logger)
 
         #save to dict
         utils.write_result_dict_to_file(result=f_mcmc_acc, seed = self.seed, 
                                  file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"))
+
+
+        #evaluate f_mcmc_model without interpolation param = 1 (product) and 0 (mixture)
+        self.tuned_interp_param =  torch.clone(self.interp_param)
+
+        # PRODUCT model/ previous FMCMC
+        self.interp_param = torch.tensor([1.0], device=self.device) 
+        prod_f_mcmc_acc = self.test_acc(valloader)
+        utils.print_and_log("\nGlobal rounds completed: {}, PRODUCT f_mcmc test_acc: {}".format(i, prod_f_mcmc_acc), self.logger)
+        prod_f_mcmc_nllhd, prod_f_mcmc_cal_error = utils.test_calibration(model = self, testloader=valloader, task=self.task,
+                                                      device = self.device, model_type= "ensemble")
+        utils.print_and_log("Global rounds completed: {}, PRODUCT f_mcmc test_ NLLHD: {}, Cal Error: {}\n".format(i, prod_f_mcmc_nllhd, prod_f_mcmc_cal_error), self.logger)
+
+        #save to dict
+        utils.write_result_dict_to_file(result=prod_f_mcmc_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="product_f_mcmc"))
+
+        # MIXTURE model/ previous FMCMC
+        self.interp_param = torch.tensor([0.0], device=self.device)
+        mix_f_mcmc_acc = self.test_acc(valloader)
+        utils.print_and_log("\nGlobal rounds completed: {}, MIXTURE f_mcmc test_acc: {}".format(i, mix_f_mcmc_acc), self.logger)
+        mix_f_mcmc_nllhd, mix_f_mcmc_cal_error = utils.test_calibration(model = self, testloader=valloader, task=self.task,
+                                                      device = self.device, model_type= "ensemble")
+        utils.print_and_log("Global rounds completed: {}, MIXTURE f_mcmc test_ NLLHD: {}, Cal Error: {}\n".format(i, mix_f_mcmc_nllhd, mix_f_mcmc_cal_error), self.logger)
+
+        #save to dict
+        utils.write_result_dict_to_file(result=mix_f_mcmc_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="mixture_f_mcmc"))
+
+        #revert self interp param
+        self.interp_param = self.tuned_interp_param
 
         #compute ep mcmc result and store in global_train
         self.ep_mcmc_aggregate()
         ep_mcmc_acc = self.global_train.test_acc(valloader)
         ep_mcmc_nllhd, ep_mcmc_cal_error = utils.test_calibration(model = self.global_train, testloader=valloader, task=self.task,
                                                       device = self.device, model_type= "ensemble")
-        utils.print_and_log("Global rounds completed: {}, ep_mcmc test_acc: {}, NLLHD: {}, Calibration Error: {}".format(i, ep_mcmc_acc, ep_mcmc_nllhd, ep_mcmc_cal_error), self.logger)
+        utils.print_and_log("\nGlobal rounds completed: {}, ep_mcmc test_acc: {}, NLLHD: {}, Calibration Error: {}\n".format(i, ep_mcmc_acc, ep_mcmc_nllhd, ep_mcmc_cal_error), self.logger)
         
         #save to dict 
         utils.write_result_dict_to_file(result=ep_mcmc_acc, seed = self.seed, 
@@ -2637,15 +2764,15 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         ##### UNCOMMENT LATER ###########
         #take step of FedPA 
-        self.fed_pa_trainer.global_update_step_trained_clients()
-        fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
-        fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
-                                                      device = self.device, model_type= "single")
-        utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
+        #self.fed_pa_trainer.global_update_step_trained_clients()
+        #fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
+        #fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
+        #                                              device = self.device, model_type= "single")
+        #utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
         
         #save to dict 
-        utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
-                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"))
+        #utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
+        #                         file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"))
 
 
         #save client sample models 

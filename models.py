@@ -38,9 +38,9 @@ class LinearNetVar(nn.Module):
     def forward(self, x):
         x = x.view(-1, self.input_dim)
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x).squeeze()
-        var = self.fc4(x).squeeze().exp() #so its positive
+        layer = F.relu(self.fc2(x))
+        x = self.fc3(layer).squeeze()
+        var = self.fc4(layer).squeeze().exp() #so its positive
         return x, var
 
 class CNN(nn.Module):

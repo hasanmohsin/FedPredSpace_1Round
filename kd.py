@@ -4,6 +4,7 @@ import swa
 import copy
 import torch.nn.functional as F
 import matplotlib.pyplot as plt 
+import utils 
 
 class KD:
     def __init__(self, teacher, student, lr, device, train_loader, kd_optim_type = "sgdm"):
@@ -35,7 +36,10 @@ class KD:
             print("Classification task: using KL div loss")
         else:
             self.criterion = torch.nn.MSELoss()
-            print("Regression Task: using MSE loss")
+            #print("Regression Task: using MSE loss")
+            
+            #self.criterion = torch.nn.GaussianNLLLoss()
+            print("Regression Task: using KL Div between Gaussians as loss (and MSE as criterion)")
 
         self.device = device
         self.task = self.teacher.task
@@ -58,11 +62,12 @@ class KD:
             if self.task == "classify":
                 pred_logits =  F.log_softmax(self.student(x), dim=-1)
             else:
-                pred_logits = self.student(x)
+                pred_mean, pred_var = self.student(x)
 
                 #reshape to [*, 1] if one dimensional
-                if len(pred_logits.shape) == 1:
-                    pred_logits = pred_logits.unsqueeze(-1)
+                if len(pred_mean.shape) == 1:
+                    pred_mean = pred_mean.unsqueeze(-1)
+                    pred_var = pred_var.unsqueeze(-1)
 
             with torch.no_grad():
                 if self.task == "classify":
@@ -72,12 +77,27 @@ class KD:
 
             #print("x size: {}".format(x.shape))
             #print("Student out size: {}".format(pred_logits.size()))
-            #print("Teaher out size: {}".format(teach_targ.size()))
+            #print("Teacher out size: {}".format(teach_targ.size()))
 
-            if self.task == "regression":
-                pred_logits = pred_logits.reshape(teach_targ.shape)
+            if self.task == "classify":
+                #print("teach_targ.shape: ", teach_targ.shape) # should be B (batch) x C (num classes)
+                #print("teach_targ sum: ", teach_targ.sum(dim =-1))
+                #print("Pred logits shape: ", pred_logits.shape) 
+                #print("Pred logits exp sum: ", pred_logits.exp().sum(dim =-1))
+            
+                pred_logits = pred_logits.reshape(teach_targ.shape) # reshape like teacher predictions 
+            elif self.task == "regression":
+                pred_mean = pred_mean.reshape(teach_targ.shape)
 
-            loss = self.criterion(pred_logits, teach_targ.detach())
+                #print("pred_var: ", pred_var)
+                #print("pred_var shape: ", pred_var.shape)
+                pred_var = pred_var.reshape(teach_var.shape)
+
+            #compute loss
+            if self.task == "classify":
+                loss = self.criterion(pred_logits, teach_targ.detach())
+            else:
+                loss = utils.kl_div_gauss(pred_mean, pred_var, teach_targ, teach_var)
             loss.backward()
             self.optimizer.step()
 
@@ -123,7 +143,11 @@ class KD:
             #average to get p(y | x, D)
             # shape: batch_size x output_dim
             #t_pred = torch.mean(teach_pred_list, dim=0, keepdims=False)
-            s_pred = self.student(x)
+            if self.task == "classify":
+                s_pred = self.student(x)
+            else:
+                s_pred, s_var = self.student(x)
+                
 
             if self.task == "classify":
                 _, t_pred_class = torch.max(t_pred, 1)    
@@ -150,7 +174,9 @@ class KD:
             return s_acc
         else:
             print("Teacher MSE on test set: ", total_t_loss)
+            print("Average teacher var: {}".format(t_var.mean()))
             print("Student MSE on test set: ", total_s_loss)
+            print("Average student var: {}".format(s_var.mean()))
             return total_s_loss
 
 

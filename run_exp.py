@@ -117,6 +117,7 @@ def main(args):
         #set up network
         base_net = models.LinearNet(inp_dim=inp_dim, num_hidden = 100, out_dim=out_dim)
         base_net = base_net.to(device)
+
     elif args.net_type == "cnn":
         base_net = models.CNN(num_classes=out_dim)
         base_net = base_net.to(device)
@@ -379,7 +380,7 @@ def main(args):
         mcmc_hyperparams['kd_epochs'] = args.kd_epochs
 
         mcmc_hyperparams['init_interp_param'] = 0.5
-        mcmc_hyperparams['interp_param_lr'] = 1e-2
+        mcmc_hyperparams['interp_param_lr'] = 1e-1
 
         f_mcmc = fed_algos.Calibrated_PredBayes_distill(num_clients = args.num_clients,
                                     base_net = base_net,
