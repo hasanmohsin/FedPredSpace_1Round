@@ -160,7 +160,10 @@ def main(args):
                     'save_dir' : args.save_dir,
                     'rho': args.rho, #below 3 are for fed_pa
                     'global_lr': args.g_lr,
-                    'optim_type': args.optim_type
+                    'optim_type': args.optim_type,
+                    'seed': args.seed,
+                    'dataset': args.dataset,
+                    'non_iid': args.non_iid
     }
 
     #do this for all datasets for fairness to the distillation algos

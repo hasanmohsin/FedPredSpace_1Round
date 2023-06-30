@@ -537,6 +537,10 @@ class EP_MCMC:
         self.logger = logger
         self.all_data = traindata
 
+        self.seed = hyperparams['seed']
+        self.dataset = hyperparams['dataset']
+        self.non_iid = hyperparams['non_iid']
+
         self.device = device
 
         self.num_clients = num_clients
@@ -2674,7 +2678,7 @@ class Calibrated_PredBayes_distill(EP_MCMC):
     #load the local models trained previously, then tune beta and distill (call aggregate)
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            model_PATH =  "./distill_/models/" + self.args.dataset + "_mcmc_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num) 
+            model_PATH =  "./distill_/models/" + self.dataset + "_mcmc_5_clients_1_rounds_log_{}_noniid_seed_".format(self.non_iid) +str(self.seed) + "_client_"+str(client_num) 
 
             # there should be 6 samples for each dataset
             for idx in range(self.max_samples): 
