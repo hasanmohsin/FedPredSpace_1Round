@@ -380,7 +380,7 @@ def main(args):
         mcmc_hyperparams['kd_epochs'] = args.kd_epochs
 
         mcmc_hyperparams['init_interp_param'] = 0.5
-        mcmc_hyperparams['interp_param_lr'] = 1e-1
+        mcmc_hyperparams['interp_param_lr'] = 1e-2
 
         f_mcmc = fed_algos.Calibrated_PredBayes_distill(num_clients = args.num_clients,
                                     base_net = base_net,

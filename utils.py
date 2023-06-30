@@ -77,9 +77,21 @@ def load_dict(fname):
         dict = {}
     return dict
 
-def write_result_dict(result, seed, logger_file):
+#type of result dict: if "" its accuracy
+def write_result_dict(result, seed, logger_file, type="acc"):
+    
+    if type == "acc":
+        pickle_tag = "ACC.pickle"
+    elif type == "nllhd":
+        pickle_tag = "NLLHD.pickle"
+    elif type == "cal":
+        pickle_tag = "CAL.pickle"
+    else:
+        pickle_tag = ".pickle"
+
     #parse file name of logger
-    fname_dict = os.path.splitext(logger_file.name)[0]+".pickle"
+
+    fname_dict = os.path.splitext(logger_file.name)[0]+pickle_tag
     dict = load_dict(fname_dict)
     print("fname for dict: ", fname_dict)
     print("dict [{}] = {}".format(seed, result))
@@ -87,9 +99,18 @@ def write_result_dict(result, seed, logger_file):
     save_dict(dict, fname_dict)
     return
 
-def write_result_dict_to_file(result, seed, file_name):
+def write_result_dict_to_file(result, seed, file_name, type="acc"):
+    if type == "acc":
+        pickle_tag = "ACC.pickle"
+    elif type == "nllhd":
+        pickle_tag = "NLLHD.pickle"
+    elif type == "cal":
+        pickle_tag = "CAL.pickle"
+    else:
+        pickle_tag = ".pickle"
+    
     #parse file name of logger
-    fname_dict = file_name + ".pickle"
+    fname_dict = file_name + pickle_tag
     dict = load_dict(fname_dict)
     print("fname for dict: ", fname_dict)
     print("dict [{}] = {}".format(seed, result))

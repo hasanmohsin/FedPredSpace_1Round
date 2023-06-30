@@ -562,7 +562,9 @@ class EP_MCMC:
                                                                                         outdim = self.outdim)
         else:
             self.client_dataloaders, self.client_datasize = datasets.iid_split(traindata, num_clients, self.batch_size)
-    
+
+        self.max_samples = hyperparams['max_samples']
+
         for c in range(num_clients):
             hyperparams_c = copy.deepcopy(hyperparams)
             #hyperparams_c['datasize'] = self.client_datasize[c]
@@ -2672,11 +2674,14 @@ class Calibrated_PredBayes_distill(EP_MCMC):
     #load the local models trained previously, then tune beta and distill (call aggregate)
     def global_update_step_trained_clients(self):
         for client_num in range(self.num_clients):
-            PATH =  "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
-            self.client_nets[client_num].load_state_dict(torch.load(PATH))
-            if self.onemodel == False:
-                for i in range(self.epoch_per_client):
-                    self.local_train(client_num)
+            model_PATH =  "./distill_/models/" + self.args.dataset + "_mcmc_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num) 
+
+            # there should be 6 samples for each dataset
+            for idx in range(self.max_samples): 
+                path = model_PATH + "_sample_" + str(idx) 
+                weight_dict = torch.load(path)
+                self.client_train.sampled_nets.append(weight_dict)
+            
         self.aggregate()
 
     def train(self, valloader):
@@ -2685,10 +2690,10 @@ class Calibrated_PredBayes_distill(EP_MCMC):
             
             ################################
             #train from scratch
-            self.global_update_step()
+            #self.global_update_step()
 
             #or load saved models
-            #self.global_update_step_trained_clients()
+            self.global_update_step_trained_clients()
             ######################################
 
 
@@ -2702,7 +2707,9 @@ class Calibrated_PredBayes_distill(EP_MCMC):
                 acc_c = self.client_train[c].test_acc(valloader)
                 utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
 
-        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger, type="acc")
+        utils.write_result_dict(result=nllhd, seed=self.seed, logger_file=self.logger, type="nllhd")
+        utils.write_result_dict(result=cal_error, seed=self.seed, logger_file=self.logger, type="cal")
 
         #evaluate samples on other methods (FMCMC, and EP MCMC)
         f_mcmc_acc = self.test_acc(valloader)
@@ -2713,7 +2720,14 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         #save to dict
         utils.write_result_dict_to_file(result=f_mcmc_acc, seed = self.seed, 
-                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"))
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"),
+                                 type = "acc")
+        utils.write_result_dict_to_file(result=f_mcmc_nllhd, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"),
+                                 type = "nllhd")
+        utils.write_result_dict_to_file(result=f_mcmc_cal_error, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="f_mcmc"),
+                                 type = "cal")
 
 
         #evaluate f_mcmc_model without interpolation param = 1 (product) and 0 (mixture)
@@ -2729,7 +2743,15 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         #save to dict
         utils.write_result_dict_to_file(result=prod_f_mcmc_acc, seed = self.seed, 
-                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="product_f_mcmc"))
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="product_f_mcmc"),
+                                 type = "acc")
+        utils.write_result_dict_to_file(result=prod_f_mcmc_nllhd, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="product_f_mcmc"),
+                                 type = "nllhd")
+        utils.write_result_dict_to_file(result=prod_f_mcmc_cal_error, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="product_f_mcmc"),
+                                 type = "cal")
+
 
         # MIXTURE model/ previous FMCMC
         self.interp_param = torch.tensor([0.0], device=self.device)
@@ -2741,7 +2763,14 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         #save to dict
         utils.write_result_dict_to_file(result=mix_f_mcmc_acc, seed = self.seed, 
-                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="mixture_f_mcmc"))
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="mixture_f_mcmc"),
+                                 type = "acc")
+        utils.write_result_dict_to_file(result=mix_f_mcmc_nllhd, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="mixture_f_mcmc"),
+                                 type = "nllhd")
+        utils.write_result_dict_to_file(result=mix_f_mcmc_cal_error, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="mixture_f_mcmc"),
+                                 type = "cal")
 
         #revert self interp param
         self.interp_param = self.tuned_interp_param
@@ -2755,7 +2784,14 @@ class Calibrated_PredBayes_distill(EP_MCMC):
         
         #save to dict 
         utils.write_result_dict_to_file(result=ep_mcmc_acc, seed = self.seed, 
-                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"))
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"),
+                                 type = "acc")
+        utils.write_result_dict_to_file(result=ep_mcmc_nllhd, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"),
+                                 type = "nllhd")
+        utils.write_result_dict_to_file(result=ep_mcmc_cal_error, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="ep_mcmc"),
+                                 type = "cal")
 
 
         #for fed_pa 1 round results
@@ -2764,15 +2800,23 @@ class Calibrated_PredBayes_distill(EP_MCMC):
 
         ##### UNCOMMENT LATER ###########
         #take step of FedPA 
-        #self.fed_pa_trainer.global_update_step_trained_clients()
-        #fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
-        #fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
-        #                                              device = self.device, model_type= "single")
-        #utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
+        self.fed_pa_trainer.global_update_step_trained_clients()
+        fed_pa_acc = self.fed_pa_trainer.get_acc(self.fed_pa_trainer.global_train.net, valloader)
+        fed_pa_nllhd, fed_pa_cal_error = utils.test_calibration(model = self.fed_pa_trainer.global_train.net, testloader=valloader, task=self.task,
+                                                      device = self.device, model_type= "single")
+        utils.print_and_log("Global rounds completed: {}, fed_pa test_acc: {},  NLLHD: {}, Calibration Error: {}".format(i, fed_pa_acc, fed_pa_nllhd, fed_pa_cal_error), self.logger)
         
         #save to dict 
-        #utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
-        #                         file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"))
+        utils.write_result_dict_to_file(result=fed_pa_acc, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"),
+                                 type = "acc")
+        utils.write_result_dict_to_file(result=fed_pa_nllhd, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"),
+                                 type = "nllhd")
+        utils.write_result_dict_to_file(result=fed_pa_cal_error, seed = self.seed, 
+                                 file_name= self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "distill_f_mcmc", target_mode="fed_pa"),
+                                 type = "cal")
+
 
 
         #save client sample models 
