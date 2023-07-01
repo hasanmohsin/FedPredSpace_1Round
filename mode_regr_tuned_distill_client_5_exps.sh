@@ -190,8 +190,11 @@ fi
 
 for seed in 1 2 3 #4 5 6 7 8 9 10
 do
-	printf "\nRunning Tuned Distill F MCMC Experiment: \n"
-	python run_exp.py --mode tune_distill_f_mcmc --dataset $data --epoch_per_client $epochs --lr $lr_mcmc --num_round 1 --save_dir $save_dir --kd_lr $kd_lr --kd_epochs 100 --kd_optim_type "adam" --temp $temp --num_cycles $num_cycles --max_samples $max_samples --sample_per_cycle $sample_per_cycle --seed $seed
+	printf "\nRunning NONIID Tuned Distill F MCMC Experiment: \n"
+	python run_exp.py --mode tune_distill_f_mcmc --dataset $data --epoch_per_client $epochs --lr $lr_mcmc --num_round 1 --save_dir $save_dir --kd_lr $kd_lr --kd_epochs 100 --kd_optim_type "adam" --temp $temp --num_cycles $num_cycles --max_samples $max_samples --sample_per_cycle $sample_per_cycle --seed $seed --non_iid 1.0
+
+    printf "\nRunning IID Tuned Distill F MCMC Experiment: \n"
+	python run_exp.py --mode tune_distill_f_mcmc --dataset $data --epoch_per_client $epochs --lr $lr_mcmc --num_round 1 --save_dir $save_dir --kd_lr $kd_lr --kd_epochs 100 --kd_optim_type "adam" --temp $temp --num_cycles $num_cycles --max_samples $max_samples --sample_per_cycle $sample_per_cycle --seed $seed --non_iid 0.0
 
 	#printf "\nRunning Distill F MCMC Experiment: \n"
 	#python run_exp.py --mode distill_f_mcmc --dataset $data --epoch_per_client $epochs --lr $lr_mcmc --num_round 1 --save_dir "./results_mult_regr/" --kd_lr $kd_lr --kd_epochs 100 --kd_optim_type "adam" --temp $temp --num_cycles $num_cycles --max_samples $max_samples --sample_per_cycle $sample_per_cycle --seed $seed
