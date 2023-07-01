@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import pickle
 import tensorflow_probability as tfp
+import math
 
 device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
 
@@ -156,6 +157,55 @@ def seq_split(dataset, lengths, generator = torch.default_generator):
 
 # for evaluation of model calibration
 
+def GaussianNLLLoss(input, target, var, eps=1e-6, reduction='mean', full = False):
+    # Check var size
+    # If var.size == input.size, the case is heteroscedastic and no further checks are needed.
+    # Otherwise:
+    if var.size() != input.size():
+
+        # If var is one dimension short of input, but the sizes match otherwise, then this is a homoscedastic case.
+        # e.g. input.size = (10, 2, 3), var.size = (10, 2)
+        # -> unsqueeze var so that var.shape = (10, 2, 1)
+        # this is done so that broadcasting can happen in the loss calculation
+        if input.size()[:-1] == var.size():
+            var = torch.unsqueeze(var, -1)
+
+        # This checks if the sizes match up to the final dimension, and the final dimension of var is of size 1.
+        # This is also a homoscedastic case.
+        # e.g. input.size = (10, 2, 3), var.size = (10, 2, 1)
+        elif input.size()[:-1] == var.size()[:-1] and var.size(-1) == 1:  # Heteroscedastic case
+            pass
+
+        # If none of the above pass, then the size of var is incorrect.
+        else:
+            raise ValueError("var is of incorrect size")
+
+    # Check validity of reduction mode
+    if reduction != 'none' and reduction != 'mean' and reduction != 'sum':
+        raise ValueError(reduction + " is not valid")
+
+    # Entries of var must be non-negative
+    if torch.any(var < 0):
+        raise ValueError("var has negative entry/entries")
+
+    # Clamp for stability
+    var = var.clone()
+    with torch.no_grad():
+        var.clamp_(min=eps)
+
+    # Calculate the loss
+    loss = 0.5 * (torch.log(var) + (input - target)**2 / var)
+    if full:
+        loss += 0.5 * math.log(2 * math.pi)
+
+    if reduction == 'mean':
+        return loss.mean()
+    elif reduction == 'sum':
+        return loss.sum()
+    else:
+        return loss
+
+
 #calculate expected calibration error for classification
 def test_ece(model, testloader, device, model_type = "ensemble"):
     acc = [] #1 if accurate, 0 if not accurate
@@ -218,7 +268,7 @@ def test_classify_nllhd(model, testloader, device, model_type = "ensemble"):
 
 def test_regr_nllhd(model, testloader, device, model_type = "ensemble"):
     total_loss = 0.0
-    criterion = torch.nn.GaussianNLLLoss()
+    #criterion = .GaussianNLLLoss()
 
     for batch_idx,(x,y) in  enumerate(testloader):
         x = x.to(device)
@@ -232,7 +282,7 @@ def test_regr_nllhd(model, testloader, device, model_type = "ensemble"):
         else:
             pred, pred_var = model(x)
         #pred = pred.reshape(y.shape)
-        total_loss += criterion(pred, y, pred_var).item()
+        total_loss += GaussianNLLLoss(pred, y, pred_var).item()
 
     print("NLLHD on test set: ", total_loss)
     return total_loss    

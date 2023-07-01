@@ -2355,7 +2355,7 @@ class Calibrated_PredBayes_distill(EP_MCMC):
                 else:
                     #print("pred mean: ", pred_mean)
                     #print("pred_var: ", pred_var)
-                    loss = torch.nn.GaussianNLLLoss()(pred_mean, y, pred_var) #should be input, target, var
+                    loss = utils.GaussianNLLLoss(pred_mean, y, pred_var) #should be input, target, var
                     #loss = (pred_mean -  y)**2/(2*pred_std**2) + torch.log(torch.sqrt(2*np.pi)*pred_std)
                 #self.interp_param.retain_grad() #for some reason, its a leaf node, so needs to retain grad
                 
