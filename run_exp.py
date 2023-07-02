@@ -219,7 +219,8 @@ def main(args):
                                         logger = logger,
                                         non_iid = args.non_iid,
                                         task = task)
-        fed_avg_trainer.train(valloader)
+        #fed_avg_trainer.train(valloader)
+        fed_avg_trainer.train_saved_models(valloader)
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
     elif mode == "fed_prox":
         sgd_hyperparams['device'] = device
@@ -235,9 +236,11 @@ def main(args):
                                         task = task)
 
         if VALIDATE:
-            fed_avg_trainer.train(valloader_tuning)
+            #fed_avg_trainer.train(valloader_tuning)
+            fed_avg_trainer.train_saved_models(valloader_tuning)
         else:
-            fed_avg_trainer.train(valloader)
+            #fed_avg_trainer.train(valloader)
+            fed_avg_trainer.train_saved_models(valloader)
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
         
     elif mode == "adapt_fl":
@@ -253,10 +256,12 @@ def main(args):
                                         non_iid = args.non_iid,
                                         task = task)
         if VALIDATE:
-            fed_avg_trainer.train(valloader_tuning)
+            #fed_avg_trainer.train(valloader_tuning)
+            fed_avg_trainer.train_saved_models(valloader_tuning)
         else:
-            fed_avg_trainer.train(valloader)
-        
+            #fed_avg_trainer.train(valloader)
+            fed_avg_trainer.train_saved_models(valloader)
+
         #acc = utils.classify_acc(fed_avg_trainer.global_net, valloader)
     elif mode == "fed_be":
         #len_data = train_data.__len__()
@@ -273,8 +278,8 @@ def main(args):
                                     hyperparams = sgd_hyperparams, device=device, logger = logger,
                                     args=args, non_iid = args.non_iid,
                                     task = task)
-        oneshot_fl.train(valloader=valloader)
-
+        #oneshot_fl.train(valloader=valloader)
+        oneshot_fl.train_saved_models_no_distill(valloader)
     elif mode == "fed_pa":
         #add hyperparameter
         mcmc_hyperparams['rho'] = args.rho #1.0
@@ -294,7 +299,8 @@ def main(args):
                                     hyperparams = mcmc_hyperparams, device=device, logger = logger,
                                     non_iid = args.non_iid,
                                     task = task)
-        fed_pa.train(valloader=valloader)
+        #fed_pa.train(valloader=valloader)
+        fed_pa.train_saved_models(valloader)
     elif mode == "ep_mcmc":
         ep_mcmc = fed_algos.EP_MCMC(num_clients = args.num_clients,
                                     base_net = base_net,
@@ -321,7 +327,8 @@ def main(args):
                                     hyperparams = sgd_hyperparams, device=device, logger = logger,
                                     args=args, non_iid = args.non_iid,
                                     task = task)
-        oneshot_fl.train(valloader=valloader)
+        #oneshot_fl.train(valloader=valloader)
+        oneshot_fl.train_saved_models_no_distill(valloader)
     elif mode == "oneshot_fl_cs":
 
         sgd_hyperparams['kd_lr'] = args.kd_lr

@@ -37,7 +37,7 @@ def classify_acc(net, dataloader):
     return acc
 
 # compute MSE loss for a regression task
-def regr_acc(net, dataloader):
+def regr_acc(net, dataloader, outs_var = False):
     # test eval
 
     #eval mode
@@ -50,7 +50,10 @@ def regr_acc(net, dataloader):
         x = x.to(device)
         y= y.to(device)
 
-        pred = net(x)
+        if outs_var:
+            pred, _ = net(x)
+        else:
+            pred = net(x)
         
         loss = criterion(pred, y)
         total += loss.item()

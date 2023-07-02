@@ -163,13 +163,43 @@ class FedAvg:
             acc = self.get_acc(self.global_net, valloader)
             utils.print_and_log("Global rounds completed: {}, test_acc: {}".format(i+1, acc), self.logger)
         
+        
         #save final results here
-        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id)
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id, type="acc")
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         
         #self.save_models()
         
         return
+    
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            #load client models
+            path =  "./results/models/" + self.dataset + "_fed_sgd_5_clients_{}_rounds_sgdm_optim_log_{}_noniid_seed_".format(self.num_rounds, self.non_iid) +str(self.seed) + "_client_"+str(client_num) 
+
+            weight_dict = torch.load(path)
+            self.client_nets[client_num].load_state_dict(weight_dict)
+
+        #aggregate as usual
+        self.aggregate()
+
+    def train_saved_models(self, valloader):
+        #load and aggregate trained models 
+        self.global_update_step_trained_clients()
+
+        acc = self.get_acc(self.global_net, valloader)
+        
+        nllhd, cal_error = utils.test_calibration(model = self.global_net, testloader=valloader, task=self.task, 
+                                                      device = self.device, model_type= "single")
+
+        utils.print_and_log("\nGlobal rounds completed: {}, FedAvg test_acc: {}, NLLHD: {}, Calibration Error: {}\n".format(self.num_rounds, acc, nllhd, cal_error), self.logger)
+
+        #save final results here
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id, type="acc")
+        utils.write_result_dict_to_file(result = nllhd, seed = self.seed, file_name = self.save_dir + self.exp_id, type="nllhd")
+        utils.write_result_dict_to_file(result = cal_error, seed = self.seed, file_name = self.save_dir + self.exp_id, type="cal")
+
+
 
 
 class FedProx:
@@ -340,6 +370,34 @@ class FedProx:
         #self.save_models()
         
         return
+    
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            #load client models
+            path =  "./results/models/" + self.dataset + "_fed_prox_5_clients_{}_rounds_log_{}_noniid_seed_".format(self.num_rounds, self.non_iid) +str(self.seed) + "_client_"+str(client_num) 
+
+            weight_dict = torch.load(path)
+            self.client_nets[client_num].load_state_dict(weight_dict)
+            
+        #aggregate as usual
+        self.aggregate()
+
+    def train_saved_models(self, valloader):
+        #load and aggregate trained models 
+        self.global_update_step_trained_clients()
+
+        acc = self.get_acc(self.global_net, valloader)
+        
+        nllhd, cal_error = utils.test_calibration(model = self.global_net, testloader=valloader, task=self.task, 
+                                                      device = self.device, model_type= "single")
+
+        utils.print_and_log("\nGlobal rounds completed: {}, Fed Prox test_acc: {}, NLLHD: {}, Calibration Error: {}\n".format(self.num_rounds, acc, nllhd, cal_error), self.logger)
+
+        #save final results here
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id, type="acc")
+        utils.write_result_dict_to_file(result = nllhd, seed = self.seed, file_name = self.save_dir + self.exp_id, type="nllhd")
+        utils.write_result_dict_to_file(result = cal_error, seed = self.seed, file_name = self.save_dir + self.exp_id, type="cal")
+
 
 class AdaptiveFL:
     def __init__(self, num_clients, base_net, 
@@ -528,6 +586,33 @@ class AdaptiveFL:
         #self.save_models()
         
         return
+
+    def global_update_step_trained_clients(self):
+        for client_num in range(self.num_clients):
+            #load client models
+            path =  "./results/models/" + self.dataset + "_adapt_fl_5_clients_{}_rounds_log_{}_noniid_seed_".format(self.num_rounds, self.non_iid) +str(self.seed) + "_client_"+str(client_num) 
+
+            weight_dict = torch.load(path)
+            self.client_nets[client_num].load_state_dict(weight_dict)
+            
+        #aggregate as usual
+        self.aggregate()
+
+    def train_saved_models(self, valloader):
+        #load and aggregate trained models 
+        self.global_update_step_trained_clients()
+
+        acc = self.get_acc(self.global_net, valloader)
+        
+        nllhd, cal_error = utils.test_calibration(model = self.global_net, testloader=valloader, task=self.task, 
+                                                      device = self.device, model_type= "single")
+
+        utils.print_and_log("\nGlobal rounds completed: {}, Adapt FL test_acc: {}, NLLHD: {}, Calibration Error: {}\n".format(self.num_rounds, acc, nllhd, cal_error), self.logger)
+
+        #save final results here
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id, type="acc")
+        utils.write_result_dict_to_file(result = nllhd, seed = self.seed, file_name = self.save_dir + self.exp_id, type="nllhd")
+        utils.write_result_dict_to_file(result = cal_error, seed = self.seed, file_name = self.save_dir + self.exp_id, type="cal")
 
 class EP_MCMC:
     def __init__(self, num_clients, base_net, 
@@ -1323,6 +1408,34 @@ class FedPA(EP_MCMC):
 
         utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
+    
+    def load_clients(self):
+        for client_num in range(self.num_clients):
+            model_PATH =  "./results_distill_f_mcmc/models/" + self.dataset + "_mcmc_5_clients_1_rounds_log_{}_noniid_seed_".format(self.non_iid) +str(self.seed) + "_client_"+str(client_num) 
+
+            # there should be 6 samples for each dataset
+            for idx in range(self.max_samples): 
+                path = model_PATH + "_sample_" + str(idx) 
+                weight_dict = torch.load(path)
+                self.client_train[client_num].sampled_nets.append(weight_dict)
+
+    def train_saved_models(self, valloader):
+        #load and aggregate trained models 
+        self.load_clients()
+        self.global_update_step_trained_clients()
+        self.global_to_clients()
+       
+        acc = self.get_acc(self.global_train.net, valloader)
+        
+        nllhd, cal_error = utils.test_calibration(model = self.global_train.net, testloader=valloader, task=self.task, 
+                                                      device = self.device, model_type= "single")
+
+        utils.print_and_log("\nGlobal rounds completed: {}, Fed Prox test_acc: {}, NLLHD: {}, Calibration Error: {}\n".format(self.num_rounds, acc, nllhd, cal_error), self.logger)
+
+        #save final results here
+        utils.write_result_dict_to_file(result = acc, seed = self.seed, file_name = self.save_dir + self.exp_id, type="acc")
+        utils.write_result_dict_to_file(result = nllhd, seed = self.seed, file_name = self.save_dir + self.exp_id, type="nllhd")
+        utils.write_result_dict_to_file(result = cal_error, seed = self.seed, file_name = self.save_dir + self.exp_id, type="cal")
 
 class ONESHOT_FL_CS:
     def __init__(self, num_clients, base_net,
@@ -1651,7 +1764,10 @@ class ONESHOT_FL:
             pred = self.client_nets[c](x)
             client_pred.append(pred)
 
-        return torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
+        mean_pred = torch.mean(torch.stack(client_pred), dim=0, keepdims=False)
+        var_pred  = 2.0 + torch.var(torch.stack(client_pred), dim=0, keepdims=False)
+
+        return mean_pred, var_pred 
 
 
     def predict(self, x):
@@ -1659,24 +1775,32 @@ class ONESHOT_FL:
             return self.predict_classify(x)
         else:
             return self.predict_regr(x)
+    
     def aggregate(self):
         self.distill.set_student(self.client_nets[0].state_dict())
 
         #train the student via kd
         self.distill.train(num_epochs = self.kdepoch)
         self.student = self.distill.student
+        
         return
-    def global_update_step_trained_clients(self):
+    def global_update_step_trained_clients(self, distill = True):
         for client_num in range(self.num_clients):
             PATH = "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             print(PATH)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
-        self.aggregate()
-    def global_update_step(self):
+        
+        
+        if distill:
+            self.aggregate()
+
+    def global_update_step(self, distill = True):
         for client_num in range(self.num_clients):
             for i in range(self.epoch_per_client):
                 self.local_train(client_num)
-        self.aggregate()
+
+        if distill:
+            self.aggregate()
 
     def test_classify(self, testloader):
         total = 0
@@ -1704,7 +1828,8 @@ class ONESHOT_FL:
             x = x.to(self.device)
             y = y.to(self.device)
 
-            pred = self.predict(x)
+            # predict expected to return a mean and variance for an ensemble
+            pred, _ = self.predict(x)
 
             pred = pred.reshape(y.shape)
             total_loss += criterion(pred, y).item()
@@ -1742,6 +1867,34 @@ class ONESHOT_FL:
         utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}".format(i, teacher_acc), self.logger)
         utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
                                         file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"))
+        #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        return
+    
+    def train_saved_models_no_distill(self, valloader):
+        for i in range(self.num_rounds):
+            if self.task == "regression":
+                self.global_update_step(distill = False)
+            else:
+                # just loads the models
+                self.global_update_step_trained_clients(distill=False)
+            
+            for c in range(self.num_clients):
+                acc_c = self.get_acc(self.client_nets[c],valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        #teacher acc
+        teacher_acc = self.test_acc(valloader)
+        teacher_nllhd, teacher_cal = utils.test_calibration(model = self, testloader= valloader,
+                                                            task = self.task, device = self.device,
+                                                            model_type = "ensemble")
+
+        utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}, Teacher test NLLHD: {}, Cal Error: {}\n".format(self.num_rounds, teacher_acc, teacher_nllhd, teacher_cal), self.logger)
+        utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"), type="acc")
+        utils.write_result_dict_to_file(result = teacher_nllhd, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"), type="nllhd")
+        utils.write_result_dict_to_file(result = teacher_cal, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "oneshot_fl", target_mode="teacher_oneshot_fl"), type="cal")
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
         return
 
@@ -2102,6 +2255,9 @@ class FedBE:
         self.post_samples.append(self.vec_to_net(mean))
 
         #3 - sampled gaussian nets
+        
+        #print("Cov shape: ", cov.shape)
+        #print("Cov matrix: ", cov.reshape(1, -1))
         dist = torch.distributions.Normal(mean, cov.reshape(1, -1))
         dist = torch.distributions.independent.Independent(dist, 1)
         #dist = torch.distributions.MultivariateNormal(loc = global_mean, precision_matrix=global_prec)
@@ -2132,8 +2288,11 @@ class FedBE:
             pred = self.post_samples[m](x)
             preds.append(pred)
 
+        pred_mean = torch.mean(torch.stack(preds), dim=0, keepdims=False)
+        pred_var = 2.0 + torch.var(torch.stack(preds), dim=0, keepdims=False) # aleatoric variance estimate of 2.0
+        
         #mean of p(y|x) is avg of means
-        return torch.mean(torch.stack(preds), dim=0, keepdims=False)
+        return pred_mean, pred_var 
 
 
     def predict(self, x):
@@ -2142,30 +2301,33 @@ class FedBE:
         else:
             return self.predict_regr(x)
 
-    def aggregate(self):
+    def aggregate(self, distill):
         #get new set of posterior samples
         self.get_post_samples()
 
-        self.distill.set_student(self.client_nets[0].state_dict())
+        if distill:
+            self.distill.set_student(self.client_nets[0].state_dict())
 
-        #train the student via kd
-        self.distill.train(num_epochs = self.kdepoch)
-        self.student = self.distill.student
+            #train the student via kd
+            self.distill.train(num_epochs = self.kdepoch)
+            self.student = self.distill.student
         return
     ######################################################################################
 
-    def global_update_step_trained_clients(self):
+    def global_update_step_trained_clients(self, distill = True):
         for client_num in range(self.num_clients):
-            PATH = self.args.dataset + "_fed_sgd_5_clients_1_rounds_sgdm_optim_log_0.0_noniid_seed_"+str(self.args.seed) + "_client_"+str(client_num)
+            PATH = "./results/models/" + self.args.dataset + "_fed_be_5_clients_1_rounds_log_{}_noniid_seed_".format(self.args.non_iid) +str(self.args.seed) + "_client_"+str(client_num)
             print(PATH)
             self.client_nets[client_num].load_state_dict(torch.load(PATH))
-        self.aggregate()
 
-    def global_update_step(self):
+        self.aggregate(distill = distill)
+
+    def global_update_step(self, distill = True):
         for client_num in range(self.num_clients):
             for i in range(self.epoch_per_client):
                 self.local_train(client_num)
-        self.aggregate()
+
+        self.aggregate(distill = distill)
 
     def test_classify(self, testloader):
         total = 0
@@ -2193,7 +2355,7 @@ class FedBE:
             x = x.to(self.device)
             y = y.to(self.device)
 
-            pred = self.predict(x)
+            pred, _ = self.predict(x)
 
             pred = pred.reshape(y.shape)
             total_loss += criterion(pred, y).item()
@@ -2246,6 +2408,34 @@ class FedBE:
         utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
                                         file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "fed_be", target_mode="teacher_fed_be"))
         #utils.write_result_dict(result=acc, seed=self.seed, logger_file=self.logger)
+        return
+    
+    def train_saved_models_no_distill(self, valloader):
+        for i in range(self.num_rounds):
+            if self.task == "regression":
+                self.global_update_step(distill = False)
+            else:
+                # just loads the models and get posterior samples
+                self.global_update_step_trained_clients(distill=False)
+            
+            for c in range(self.num_clients):
+                acc_c = self.get_acc(self.client_nets[c],valloader)
+                utils.print_and_log("Client {}, test accuracy: {}".format(c, acc_c), self.logger)
+
+        #teacher acc
+        teacher_acc = self.test_acc(valloader)
+        teacher_nllhd, teacher_cal = utils.test_calibration(model = self, testloader= valloader,
+                                                            task = self.task, device = self.device,
+                                                            model_type = "ensemble")
+
+        utils.print_and_log("Global rounds completed: {}, Teacher test_acc: {}, Teacher test NLLHD: {}, Cal Error: {}\n".format(self.num_rounds, teacher_acc, teacher_nllhd, teacher_cal), self.logger)
+        
+        utils.write_result_dict_to_file(result = teacher_acc, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "fed_be", target_mode="teacher_fed_be"), type="acc")
+        utils.write_result_dict_to_file(result = teacher_nllhd, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "fed_be", target_mode="teacher_fed_be"), type = "nllhd")
+        utils.write_result_dict_to_file(result = teacher_cal, seed = self.seed, 
+                                        file_name = self.save_dir + utils.change_exp_id(exp_id_src=self.exp_id, source_mode = "fed_be", target_mode="teacher_fed_be"), type = "cal")
         return
 
 
