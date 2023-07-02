@@ -28,6 +28,9 @@ class FedAvg:
         self.exp_id = hyperparams['exp_id']
         self.save_dir = hyperparams['save_dir']
 
+        self.dataset = hyperparams['dataset']
+        self.non_iid = hyperparams['non_iid']
+
         self.logger = logger
 
         self.all_data = traindata
@@ -220,6 +223,9 @@ class FedProx:
         self.model_save_dir = hyperparams['model_save_dir']
         self.exp_id = hyperparams['exp_id']
         self.save_dir = hyperparams['save_dir']
+
+        self.dataset = hyperparams['dataset']
+        self.non_iid = hyperparams['non_iid']
 
         self.reg_global = hyperparams['reg_global']
 
@@ -417,6 +423,9 @@ class AdaptiveFL:
         self.model_save_dir = hyperparams['model_save_dir']
         self.exp_id = hyperparams['exp_id']
         self.save_dir = hyperparams['save_dir']
+
+        self.dataset = hyperparams['dataset']
+        self.non_iid = hyperparams['non_iid']
 
         self.logger = logger
 
@@ -1681,6 +1690,10 @@ class ONESHOT_FL:
         self.optim_type = hyperparams['optim_type']
         self.seed = hyperparams['seed']
         self.args = args
+
+        self.dataset = hyperparams['dataset']
+        self.non_iid = hyperparams['non_iid']
+
         # initialize nets and data for all clients
         self.client_nets = []
         self.optimizers = []
@@ -2135,6 +2148,10 @@ class FedBE:
         self.optim_type = hyperparams['optim_type']
         self.seed = hyperparams['seed']
         self.args = args
+
+        self.dataset = hyperparams['dataset']
+        self.non_iid = hyperparams['non_iid']
+
         # initialize nets and data for all clients
         self.client_nets = []
         self.optimizers = []

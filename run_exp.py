@@ -137,7 +137,9 @@ def main(args):
                         'seed': args.seed,
                         'model_save_dir': model_save_dir,
                         'exp_id': exp_id,
-                        'save_dir': args.save_dir
+                        'save_dir': args.save_dir,
+                        'dataset': args.dataset,
+                        'non_iid': args.non_iid
     }
 
     #for mcmc techniques (per client)
