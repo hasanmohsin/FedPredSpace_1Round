@@ -1768,7 +1768,12 @@ class ONESHOT_FL:
             pred_logit = self.client_nets[c](x)
 
             client_pred.append(pred_logit)
-        return torch.mean(torch.stack(client_pred), axis = 0)
+
+        #make sure to convert from logits to prob predictions
+        preds = torch.nn.functional.softmax(torch.mean(torch.stack(client_pred), axis = 0), dim=-1)
+        #print("Preds shape oneshot FL: ", preds.shape)
+        
+        return preds 
 
     def predict_regr(self, x):
         client_pred = []
@@ -2246,6 +2251,7 @@ class FedBE:
         
         #cov matrix has this vector as diagonal
         cov = torch.mean((c_vectors - mean)**2, dim = 0)
+        cov = torch.clamp(cov, min=1e-6) # to make sure we dont get 0 variance
 
         return mean, cov
 
@@ -2275,6 +2281,8 @@ class FedBE:
         
         #print("Cov shape: ", cov.shape)
         #print("Cov matrix: ", cov.reshape(1, -1))
+        #print("Cov min: ", torch.min(cov))
+        
         dist = torch.distributions.Normal(mean, cov.reshape(1, -1))
         dist = torch.distributions.independent.Independent(dist, 1)
         #dist = torch.distributions.MultivariateNormal(loc = global_mean, precision_matrix=global_prec)
